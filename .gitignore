@@ -1,0 +1,9 @@
+# Bỏ qua các file PDF nặng trong thư mục sources
+sources/**/*.pdf
+
+# Bỏ qua môi trường ảo / file tạm Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
