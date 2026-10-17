@@ -1,3 +1,12 @@
+---
+title: Digital Banking Index Dashboard
+emoji: 🏦
+colorFrom: purple
+colorTo: pink
+sdk: docker
+app_port: 7860
+pinned: false
+---
 # 🏦 Đánh giá mức độ chuyển đổi số ngân hàng (Digital Banking Index – DBI) 2021–2025
 
 > **Khung tham chiếu:** Bộ tiêu chí đánh giá mức độ chuyển đổi số doanh nghiệp lớn theo Quyết định 1567/QĐ-BKHCN ngày 30/06/2025, rút gọn còn 24 tiêu chí có thể quan sát từ nguồn dữ liệu công khai.
