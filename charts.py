@@ -2,8 +2,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-FONT_FAMILY = "Times New Roman, serif"
-
 def create_trend_line_chart(final_scores_df):
     """Biểu đồ đường xu hướng Digital Score 2021-2025"""
     fig = px.line(

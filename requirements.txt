@@ -1,4 +1,23 @@
-streamlit>=1.28.0
-plotly>=5.15.0
-pandas>=2.0.0
-matplotlib>=3.7.0
+# ============================================================
+# Digital Banking Index (DBI) 2021-2025
+# Cài đặt:  pip install -r requirements.txt
+# Python 3.9 - 3.12
+# ============================================================
+
+# --- Dashboard (dashboard.py, charts.py) ---
+dash>=2.14,<5
+plotly>=5.15
+pandas>=2.0
+numpy>=1.24
+
+# --- Chấm điểm (scoring.py): chỉ dùng pandas, numpy ở trên ---
+
+# --- Thu thập dữ liệu (data_collection.py) ---
+# BỎ DẤU # Ở THƯ VIỆN MÀ data_collection.py THỰC SỰ import (kiểm tra đầu file):
+# pymupdf>=1.23
+# pdfplumber>=0.10
+# pypdf>=3.17
+# openpyxl>=3.1        # nếu đọc/ghi source_catalog.xlsx
+
+# --- Tùy chọn: xuất ảnh biểu đồ PNG cho báo cáo (fig.write_image) ---
+# kaleido>=0.2.1

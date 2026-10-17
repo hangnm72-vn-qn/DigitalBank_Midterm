@@ -1,290 +1,1086 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-
-# Cấu hình trang
-st.set_page_config(page_title="Digital Banking Index Dashboard", layout="wide")
-
-FONT_FAMILY = "Times New Roman, serif"
-
-# ==========================================
-# 1. HÀM VẼ BIỂU ĐỒ (PLOTLY CHARTS)
-# ==========================================
-
-def create_trend_line_chart(final_scores_df):
-    """Biểu đồ đường xu hướng Digital Score 2021-2025"""
-    fig = px.line(
-        final_scores_df,
-        x='Year',
-        y='Digital_Score',
-        color='Bank',
-        markers=True,
-        title='Diễn biến Digital Score giai đoạn 2021 - 2025',
-        labels={'Digital_Score': 'Điểm Chuyển đổi số', 'Year': 'Năm', 'Bank': 'Ngân hàng'}
-    )
-    fig.update_layout(
-        font=dict(family=FONT_FAMILY, size=18, color='#000000'),
-        title=dict(font=dict(size=26, family=FONT_FAMILY, color='#000000')),
-        xaxis=dict(tickmode='linear', dtick=1, title_font=dict(size=20, color='#000000'), tickfont=dict(size=18, color='#000000')),
-        yaxis=dict(title_font=dict(size=20, color='#000000'), tickfont=dict(size=18, color='#000000')),
-        legend=dict(font=dict(size=18, color='#000000'), title=dict(font=dict(size=18, color='#000000'))),
-        hovermode='x unified',
-        template='plotly_white',
-        height=550,
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
-    return fig
-
-def create_pillar_radar_chart(final_scores_df, selected_year, selected_banks):
-    """Biểu đồ Radar so sánh các trụ cột theo năm"""
-    df_filtered = final_scores_df[(final_scores_df['Year'] == selected_year) & (final_scores_df['Bank'].isin(selected_banks))]
-    
-    exclude_cols = ['Bank', 'Year', 'Digital_Score', 'Pillars_Available', 'Rank']
-    pillars = [col for col in final_scores_df.columns if col not in exclude_cols]
-    
-    fig = go.Figure()
-
-    for _, row in df_filtered.iterrows():
-        values = [row[p] for p in pillars]
-        values.append(values[0])
-        fig.add_trace(go.Scatterpolar(
-            r=values,
-            theta=pillars + [pillars[0]],
-            fill='toself',
-            name=row['Bank']
-        ))
-
-    fig.update_layout(
-        font=dict(family=FONT_FAMILY, size=16, color='#000000'),
-        title=dict(text=f'So sánh Trụ cột Chuyển đổi số năm {selected_year}', font=dict(size=24, family=FONT_FAMILY, color='#000000')),
-        polar=dict(
-            radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=16, color='#000000')),
-            angularaxis=dict(tickfont=dict(size=18, color='#000000'))
-        ),
-        legend=dict(font=dict(size=18, color='#000000')),
-        showlegend=True,
-        height=580,
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
-    return fig
-
-def create_indicator_heatmap(scored_data_df, selected_year):
-    """Heatmap Plotly kích thước siêu to, tràn màn hình, rõ chữ"""
-    df_filtered = scored_data_df[scored_data_df['Year'] == selected_year].copy()
-    pivot_df = df_filtered.pivot(index='Indicator_ID', columns='Bank', values='Score_0_5')
-    
-    fig = px.imshow(
-        pivot_df,
-        labels=dict(x="Ngân hàng", y="Mã Tiêu chí", color="Điểm (0-5)"),
-        x=pivot_df.columns,
-        y=pivot_df.index,
-        color_continuous_scale='Blues',
-        text_auto='.1f',
-        title=f'Heatmap Điểm Chi tiết 24 Tiêu chí (Năm {selected_year})'
-    )
-    fig.update_layout(
-        font=dict(family=FONT_FAMILY, size=18, color='#000000'),
-        title=dict(font=dict(size=26, family=FONT_FAMILY, color='#000000')),
-        xaxis=dict(title_font=dict(size=20, color='#000000'), tickfont=dict(size=18, color='#000000'), side='bottom'),
-        yaxis=dict(title_font=dict(size=20, color='#000000'), tickfont=dict(size=16, color='#000000'), dtick=1),
-        coloraxis_colorbar=dict(title=dict(font=dict(size=18, color='#000000')), tickfont=dict(size=16, color='#000000')),
-        height=750,
-        margin=dict(l=60, r=60, t=80, b=60)
-    )
-    fig.update_xaxes(scaleanchor=None)
-    fig.update_yaxes(scaleratio=None)
-    return fig
-
-# ==========================================
-# 2. CSS TÙY CHỈNH GIAO DIỆN & FONT
-# ==========================================
-custom_css = """
-<style>
-    /* Ép Font Times New Roman & Tăng cỡ chữ cơ sở lên 20px, màu đen */
-    html, body, [class*="css"], .stMarkdown, .stSelectbox, .stMultiSelect, p, span, label, div {
-        font-family: 'Times New Roman', Times, serif !important;
-        font-size: 20px !important;
-        color: #000000 !important;
-    }
-    
-    /* Banner Header */
-    .header-banner {
-        background: linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%);
-        padding: 26px 32px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        margin-bottom: 25px;
-    }
-    .header-title {
-        font-size: 38px !important;
-        font-weight: bold !important;
-        color: #FFFFFF !important;
-        margin: 0 !important;
-        font-family: 'Times New Roman', Times, serif !important;
-    }
-    .header-subtitle {
-        font-size: 20px !important;
-        color: #F1F5F9 !important;
-        margin-top: 8px !important;
-    }
-
-    /* Tiêu đề H1, H2, H3 màu đen đậm rõ nét */
-    h1 { font-size: 36px !important; font-weight: bold !important; color: #000000 !important; }
-    h2 { font-size: 30px !important; font-weight: bold !important; color: #000000 !important; }
-    h3 { font-size: 24px !important; font-weight: bold !important; color: #000000 !important; }
-
-    /* Thẻ Metric Bảng xếp hạng */
-    .metric-card {
-        background-color: #F8FAFC;
-        border: 2px solid #CBD5E1;
-        border-radius: 10px;
-        padding: 18px;
-        text-align: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    }
-    .metric-rank { font-size: 20px; font-weight: bold; color: #334155; }
-    .metric-bank { font-size: 26px; font-weight: bold; color: #000000; margin: 6px 0; }
-    .metric-score { font-size: 36px; font-weight: bold; color: #1D4ED8; }
-
-    /* Tab tiêu đề cỡ lớn */
-    button[data-baseweb="tab"] div p {
-        font-size: 22px !important;
-        font-weight: bold !important;
-        color: #000000 !important;
-    }
-
-    /* Bảng st.dataframe: Tiêu đề cột đen đậm, chữ to */
-    [data-testid="stDataFrame"] { font-size: 19px !important; }
-    th {
-        background-color: #E2E8F0 !important;
-        color: #000000 !important;
-        font-size: 20px !important;
-        font-weight: bold !important;
-    }
-    td { color: #000000 !important; font-size: 19px !important; }
-</style>
 """
-st.markdown(custom_css, unsafe_allow_html=True)
+Dashboard DBI 2021–2025 (public-data-based Digital Banking Index)
 
-# BANNER HEADER
-st.markdown("""
-<div class="header-banner">
-    <div class="header-title">🏦 Dashboard Đánh giá Mức độ Chuyển đổi số Ngân hàng (2021 - 2025)</div>
-    <div class="header-subtitle">Hệ thống phân tích & tra cứu chỉ số Digital Banking Index từ nguồn dữ liệu công khai</div>
-</div>
-""", unsafe_allow_html=True)
+Chạy:  python dashboard.py   ->  http://127.0.0.1:8050
 
-# ==========================================
-# 3. NẠP DỮ LIỆU (DATA LOADING)
-# ==========================================
-@st.cache_data
-def load_data():
-    final_scores = pd.read_csv('final_scores.csv')
-    scored_data = pd.read_csv('scored_data.csv')
-    raw_data = pd.read_csv('raw_data.csv')
-    data_quality = pd.read_csv('data_quality.csv')
-    return final_scores, scored_data, raw_data, data_quality
+Dữ liệu chỉ đọc từ các file đã khóa:
+    final_scores.csv, scored_data.csv, raw_data.csv, data_quality.csv
+Giao diện (CSS) nằm ở assets/style.css.
+"""
+import os
+import re
+import unicodedata
 
-try:
-    final_scores_df, scored_data_df, raw_data_df, data_quality_df = load_data()
-except Exception as e:
-    st.error(f"Lỗi tải dữ liệu: {e}. Vui lòng kiểm tra lại các file CSV trong thư mục.")
-    st.stop()
+import dash
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+from dash import Input, Output, dash_table, dcc, html
 
-# Đặt các Tab
-tab1, tab2, tab3 = st.tabs([
-    "📊 Trang 1: Overview & Trend", 
-    "🎯 Trang 2: Pillar & Indicator", 
-    "🔍 Trang 3: Evidence & Data Quality"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ==========================================================
+# 1. HẰNG SỐ GIAO DIỆN & NẠP DỮ LIỆU
+# ==========================================================
+PILLARS = ["Customer", "Strategy", "Technology", "Operations", "Culture", "Data"]
+PILLAR_VN = {
+    "Customer": "Khách hàng", "Strategy": "Chiến lược", "Technology": "Công nghệ",
+    "Operations": "Vận hành", "Culture": "Văn hóa", "Data": "Dữ liệu",
+}
+PILLAR_PREFIX = {
+    "CUS": "Customer", "STR": "Strategy", "TEC": "Technology",
+    "OPS": "Operations", "CUL": "Culture", "DAT": "Data",
+}
+PILLAR_ORDER = {p: i for i, p in enumerate(PILLARS)}
+QUANT_IDS = ["CUS2", "CUS3"]  # 2 chỉ tiêu định lượng dùng cho sensitivity check
+
+BANK_NAMES = {"TCB": "Techcombank", "BIDV": "BIDV", "VCB": "Vietcombank",
+              "VPB": "VPBank", "ACB": "ACB"}
+BANK_COLORS = {"TCB": "#FF4D6D", "BIDV": "#4F46E5", "VCB": "#10B981",
+               "VPB": "#F59E0B", "ACB": "#06B6D4"}
+ATM_BACKGROUNDS = {
+    "TCB": "linear-gradient(135deg,#FF4D6D 0%,#F472B6 48%,#8B5CF6 100%)",
+    "BIDV": "linear-gradient(135deg,#4F46E5 0%,#8B5CF6 50%,#F472B6 100%)",
+    "VCB": "linear-gradient(135deg,#10B981 0%,#2DD4BF 45%,#A78BFA 100%)",
+    "VPB": "linear-gradient(135deg,#F59E0B 0%,#FB7185 50%,#A855F7 100%)",
+    "ACB": "linear-gradient(135deg,#06B6D4 0%,#818CF8 50%,#F472B6 100%)",
+}
+DEFAULT_ATM_BG = "linear-gradient(135deg,#8B5CF6 0%,#C084FC 50%,#F472B6 100%)"
+PILLAR_COLORS = {"Customer": "#7C3AED", "Strategy": "#C084FC", "Technology": "#F472B6",
+                 "Operations": "#FDBA74", "Culture": "#2DD4BF", "Data": "#312E81"}
+HEAT_SCALE = [[0.0, "#FFF4FA"], [0.2, "#F9CDE8"], [0.5, "#D883E8"],
+              [0.75, "#9B5CF0"], [1.0, "#4C1D95"]]
+FONT = "'Plus Jakarta Sans', 'Be Vietnam Pro', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+INK, MUTED = "#2A1F57", "#6B5F92"
+GRID = "rgba(139,92,246,0.12)"
+HEAT_SCALE_DARK = [[0.0, "#2A2250"], [0.2, "#4B2A7A"], [0.5, "#8B3FBF"],
+                   [0.75, "#D05CD8"], [1.0, "#FF9BE0"]]
+
+
+def theme(dark):
+    """Bảng màu cho biểu đồ Plotly (Plotly không đọc được biến CSS)."""
+    if dark:
+        return dict(ink="#EDE7FF", muted="#B7ABDA", grid="rgba(190,170,255,0.16)",
+                    polar="rgba(255,255,255,0.04)", pie_edge="#272A52", avg="#B7ABDA",
+                    heat=HEAT_SCALE_DARK, na_bg="rgba(190,170,255,0.10)", na_text="#8E83B8",
+                    card="#272A52", na_slice="#5A5688", note_bg="rgba(39,42,82,0.9)")
+    return dict(ink=INK, muted=MUTED, grid=GRID, polar="rgba(250,240,252,0.7)", pie_edge="white",
+                avg="#6B5F92", heat=HEAT_SCALE, na_bg="rgba(139,92,246,0.10)", na_text="#8A7FB0",
+                card="white", na_slice="#D9D2EC", note_bg="rgba(255,255,255,0.8)")
+
+
+def _read_csv(name, required=True):
+    path = os.path.join(BASE_DIR, name)
+    if not os.path.exists(path):
+        if required:
+            raise FileNotFoundError(f"Không tìm thấy {name} trong {BASE_DIR}")
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
+def _clean_keys(df):
+    df = df.copy()
+    df["Bank"] = df["Bank"].astype(str).str.strip().str.upper()
+    df["Year"] = pd.to_numeric(df["Year"], errors="coerce")
+    df = df.dropna(subset=["Year"])
+    df["Year"] = df["Year"].astype(int)
+    return df
+
+
+def _norm(text):
+    """Bỏ dấu tiếng Việt, ký tự đặc biệt, chữ hoa -> so khớp tên cột linh hoạt."""
+    t = unicodedata.normalize("NFKD", str(text).replace("đ", "d").replace("Đ", "D"))
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]", "", t.lower())
+
+
+final_full = _clean_keys(_read_csv("final_scores.csv"))
+scored = _clean_keys(_read_csv("scored_data.csv"))
+raw = _clean_keys(_read_csv("raw_data.csv"))
+dq_df = _read_csv("data_quality.csv", required=False)
+
+scored["Indicator_ID"] = scored["Indicator_ID"].astype(str).str.strip().str.upper()
+scored["Score_0_5"] = pd.to_numeric(scored["Score_0_5"], errors="coerce")
+scored["PillarKey"] = scored["Indicator_ID"].str[:3].map(PILLAR_PREFIX)
+raw["Indicator_ID"] = raw["Indicator_ID"].astype(str).str.strip().str.upper()
+raw["PillarKey"] = raw["Indicator_ID"].str[:3].map(PILLAR_PREFIX)
+
+# --- Nhận diện tên cột trụ cột trong final_scores.csv ---
+PILLAR_ALIASES = {
+    "Customer": ("customer", "cus", "khachhang"),
+    "Strategy": ("strategy", "str", "chienluoc"),
+    "Technology": ("technology", "tech", "tec", "congnghe"),
+    "Operations": ("operations", "operation", "ops", "vanhanh"),
+    "Culture": ("culture", "cul", "vanhoa"),
+    "Data": ("data", "dat", "dulieu"),
+}
+_META_COLS = {"bank", "year", "digitalscore", "rank", "pillarsavailable", "rankfull"}
+print("[INFO] Cột trong final_scores.csv:", list(final_full.columns))
+final_full.columns = [str(c).strip() for c in final_full.columns]
+_rename = {}
+for _p, _aliases in PILLAR_ALIASES.items():
+    if _p in final_full.columns:
+        continue
+    for _c in final_full.columns:
+        _n = _norm(_c)
+        if _n in _META_COLS or _c in PILLARS or _c in _rename:
+            continue
+        if any(_n.startswith(a) for a in _aliases):
+            _rename[_c] = _p
+            break
+final_full = final_full.rename(columns=_rename)
+if _rename:
+    print("[INFO] Đã đổi tên cột trụ cột:", _rename)
+for _p in PILLARS:
+    if _p not in final_full.columns:
+        final_full[_p] = np.nan
+    else:
+        final_full[_p] = pd.to_numeric(final_full[_p], errors="coerce")
+if "Digital_Score" not in final_full.columns:
+    final_full["Digital_Score"] = final_full[PILLARS].mean(axis=1)
+if "Rank" not in final_full.columns:
+    final_full["Rank"] = final_full.groupby("Year")["Digital_Score"].rank(
+        method="min", ascending=False)
+final_full["Rank"] = final_full["Rank"].fillna(99).astype(int)
+final_full["Rank_Full"] = final_full["Rank"]
+
+INDICATOR_NAME = (scored.dropna(subset=["Indicator"]).drop_duplicates("Indicator_ID")
+                  .set_index("Indicator_ID")["Indicator"].to_dict()
+                  if "Indicator" in scored.columns else {})
+
+
+def _indicator_sort_key(ind_id):
+    pillar = PILLAR_PREFIX.get(str(ind_id)[:3], "")
+    num = re.sub(r"\D", "", str(ind_id)) or "0"
+    return (PILLAR_ORDER.get(pillar, 99), int(num))
+
+
+def compute_final(drop_ids=()):
+    """Tính lại điểm trụ cột / Digital Score / Rank từ scored_data.csv,
+    bỏ các Indicator_ID trong drop_ids (kịch bản sensitivity)."""
+    d = scored[~scored["Indicator_ID"].isin(drop_ids)].dropna(subset=["PillarKey"])
+    piv = d.groupby(["Bank", "Year", "PillarKey"])["Score_0_5"].mean().unstack("PillarKey")
+    for p in PILLARS:
+        if p not in piv.columns:
+            piv[p] = np.nan
+    piv = piv[PILLARS]
+    piv["Digital_Score"] = piv.mean(axis=1)
+    out = piv.reset_index()
+    out["Rank"] = (out.groupby("Year")["Digital_Score"]
+                   .rank(method="min", ascending=False).fillna(99).astype(int))
+    return out
+
+
+# Bổ sung trụ cột thiếu từ scored_data.csv (nếu final_scores.csv không đủ)
+_re = compute_final(())
+_fill = final_full[["Bank", "Year"]].merge(_re[["Bank", "Year"] + PILLARS], on=["Bank", "Year"], how="left")
+for _p in PILLARS:
+    _vals = pd.Series(_fill[_p].values, index=final_full.index)
+    if final_full[_p].isna().any():
+        print(f"[CẢNH BÁO] Trụ cột {_p} thiếu trong final_scores.csv -> bổ sung từ scored_data.csv")
+        final_full[_p] = final_full[_p].fillna(_vals)
+
+final_sens = compute_final(QUANT_IDS).merge(
+    final_full[["Bank", "Year", "Rank_Full"]], on=["Bank", "Year"], how="left")
+final_sens["Rank_Full"] = final_sens["Rank_Full"].fillna(final_sens["Rank"]).astype(int)
+SCENARIOS = {False: final_full, True: final_sens}
+
+
+def get_scores(sens):
+    return SCENARIOS[bool(sens)]
+
+
+# Kịch bản bỏ CUS2/CUS3 có khác kịch bản đầy đủ không?
+_cmp = final_full.merge(final_sens, on=["Bank", "Year"], suffixes=("", "_s"))
+SENS_IDENTICAL = bool(len(_cmp) and (_cmp["Digital_Score"] - _cmp["Digital_Score_s"]).abs().max() < 1e-9)
+
+
+def check_consistency():
+    m = final_full.merge(compute_final(()), on=["Bank", "Year"], suffixes=("", "_re"))
+    if m.empty:
+        print("[CẢNH BÁO] Không đối chiếu được final_scores.csv với scored_data.csv")
+        return
+    diff = (m["Digital_Score"] - m["Digital_Score_re"]).abs().max()
+    rank_bad = int((m["Rank"] != m["Rank_re"]).sum())
+    if diff > 0.01 or rank_bad:
+        print(f"[CẢNH BÁO] Lệch final_scores.csv vs scored_data.csv: max|ΔDigital_Score|={diff:.3f}, "
+              f"số dòng lệch Rank={rank_bad}.")
+    else:
+        print("[OK] final_scores.csv khớp với scored_data.csv.")
+
+
+check_consistency()
+
+YEARS = sorted(final_full["Year"].unique().tolist(), reverse=True)
+LATEST, FIRST = YEARS[0], YEARS[-1]
+BANKS = final_full[final_full["Year"] == LATEST].sort_values("Rank")["Bank"].tolist()
+
+# --- Bảng bằng chứng: raw_data + điểm từ scored_data ---
+_score_cols = scored[["Bank", "Year", "Indicator_ID", "Score_0_5"]].drop_duplicates(
+    ["Bank", "Year", "Indicator_ID"])
+EVID = raw.merge(_score_cols, on=["Bank", "Year", "Indicator_ID"], how="left")
+_nf_cols = [c for c in ["Raw_Value", "Note", "Evidence"] if c in EVID.columns]
+_not_found = (EVID[_nf_cols].astype(str).apply(lambda s: s.str.upper().str.contains("NOT_FOUND"))
+              .any(axis=1))
+_has_evid = (EVID["Evidence"].notna() & (EVID["Evidence"].astype(str).str.strip() != "")
+             if "Evidence" in EVID.columns else pd.Series(False, index=EVID.index))
+EVID["Is_Valid_Evidence"] = (~_not_found) & _has_evid
+_search_cols = [c for c in ["Indicator_ID", "Indicator", "Raw_Value", "Evidence", "Note", "Source_Name"]
+                if c in EVID.columns]
+EVID["_search"] = EVID[_search_cols].fillna("").astype(str).agg(" ".join, axis=1).str.lower()
+EVID_SHOW_COLS = [c for c in ["Bank", "Year", "Indicator_ID", "Indicator", "Raw_Value", "Score_0_5",
+                              "Evidence", "Source_Name", "Page/Section", "Source_Link"]
+                  if c in EVID.columns]
+EVID_HEADER = {"Score_0_5": "Điểm (0–5)", "Indicator_ID": "Mã", "Raw_Value": "Raw Value",
+               "Page/Section": "Trang/Mục", "Source_Name": "Nguồn", "Source_Link": "Liên kết"}
+
+# ==========================================================
+# 2. TIỆN ÍCH & BIỂU ĐỒ
+# ==========================================================
+GRAPH_CONFIG = {"displaylogo": False, "toImageButtonOptions": {"format": "png", "scale": 2}}
+
+
+def hex_to_rgba(hex_color, alpha):
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def base_layout(dark=False, **kwargs):
+    t = theme(dark)
+    layout = dict(
+        font=dict(family=FONT, size=13, color=t["ink"]),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=30, r=30, t=60, b=30),
+        legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center"),
+        hoverlabel=dict(bgcolor=t["card"], font=dict(family=FONT, color=t["ink"])),
+    )
+    layout.update(kwargs)
+    return layout
+
+
+def title_dict(text, dark=False):
+    return dict(text=text, x=0.02, font=dict(size=16, family=FONT, color=theme(dark)["ink"]))
+
+
+def fig_trend(sens, dark=False):
+    t = theme(dark)
+    df = get_scores(sens)
+    fig = go.Figure()
+    for bank in BANKS:
+        d = df[df["Bank"] == bank].sort_values("Year")
+        fig.add_trace(go.Scatter(
+            x=d["Year"], y=d["Digital_Score"], mode="lines+markers", name=bank,
+            line=dict(width=3, color=BANK_COLORS.get(bank, "#8B5CF6"), shape="spline", smoothing=0.5),
+            marker=dict(size=9, line=dict(width=2, color=t["card"])), hovertemplate="%{y:.2f}"))
+    avg = df.groupby("Year")["Digital_Score"].mean().sort_index()
+    fig.add_trace(go.Scatter(x=avg.index, y=avg.values, mode="lines", name="TB Nhóm Top 5",
+                             line=dict(width=2.5, color=t["avg"], dash="dash"), hovertemplate="%{y:.2f}"))
+    lo, hi = df["Digital_Score"].min(), df["Digital_Score"].max()
+    fig.update_layout(**base_layout(
+        dark, title=title_dict("Digital Score 2021–2025 và Trung bình Nhóm Top 5", dark),
+        xaxis=dict(tickmode="linear", dtick=1, gridcolor=t["grid"]),
+        yaxis=dict(title="Digital Score (0–5)", gridcolor=t["grid"],
+                   range=[max(0, lo - 0.3), min(5, hi + 0.3)]),
+        hovermode="x unified", height=430))
+    return fig
+
+
+def fig_radar(year, banks, sens, title=None, dark=False):
+    t = theme(dark)
+    df = get_scores(sens)
+    d = df[(df["Year"] == year) & (df["Bank"].isin(banks or []))]
+    fig = go.Figure()
+    theta = [PILLAR_VN[p] for p in PILLARS]
+    for bank in [b for b in BANKS if b in set(d["Bank"])]:
+        row = d[d["Bank"] == bank].iloc[0]
+        vals = [row[p] for p in PILLARS]
+        color = BANK_COLORS.get(bank, "#8B5CF6")
+        fig.add_trace(go.Scatterpolar(
+            r=vals + vals[:1], theta=theta + theta[:1], name=bank, fill="toself",
+            fillcolor=hex_to_rgba(color, 0.22 if dark else 0.16), line=dict(color=color, width=2.5),
+            hovertemplate="%{theta}: %{r:.2f}<extra>" + bank + "</extra>"))
+    fig.update_layout(**base_layout(
+        dark, title=title_dict(title or f"Sáu trụ cột năm {year}", dark),
+        polar=dict(bgcolor=t["polar"],
+                   radialaxis=dict(visible=True, range=[0, 5], gridcolor=t["grid"], linecolor=t["grid"]),
+                   angularaxis=dict(gridcolor=t["grid"], linecolor=t["grid"], tickfont=dict(size=13))),
+        height=430))
+    return fig
+
+
+def fig_stacked(year, banks, sens, dark=False):
+    """Cột = Digital Score; mỗi phân đoạn = điểm trụ cột ÷ 6 (tổng 6 phân đoạn = Digital Score)."""
+    t = theme(dark)
+    df = get_scores(sens)
+    d = df[(df["Year"] == year) & (df["Bank"].isin(banks or []))].sort_values("Rank")
+    fig = go.Figure()
+    for p in PILLARS:
+        fig.add_trace(go.Bar(
+            x=d["Bank"], y=d[p] / 6, name=PILLAR_VN[p], marker_color=PILLAR_COLORS[p],
+            customdata=d[p],
+            hovertemplate="%{x} – " + PILLAR_VN[p] +
+                          "<br>Điểm trụ cột: %{customdata:.2f}<br>Đóng góp: %{y:.2f}<extra></extra>"))
+    fig.add_trace(go.Scatter(x=d["Bank"], y=d["Digital_Score"], mode="text",
+                             text=[f"{v:.2f}" for v in d["Digital_Score"]], textposition="top center",
+                             textfont=dict(size=14, color=t["ink"]), showlegend=False, hoverinfo="skip"))
+    top = d["Digital_Score"].max() if len(d) else 5
+    fig.update_layout(**base_layout(
+        dark, title=title_dict(f"Cơ cấu đóng góp của 6 trụ cột năm {year}", dark), barmode="stack", height=430,
+        yaxis=dict(title="Digital Score", range=[0, min(5.2, top + 0.5)], gridcolor=t["grid"])))
+    return fig
+
+
+def heat_frame(year, pillar, sens, hide_na):
+    d = scored[scored["Year"] == year].copy()
+    if sens:
+        d = d[~d["Indicator_ID"].isin(QUANT_IDS)]
+    if pillar and pillar != "ALL":
+        d = d[d["PillarKey"] == pillar]
+    if d.empty:
+        return None, []
+    pv = (d.drop_duplicates(["Bank", "Indicator_ID"])
+          .pivot(index="Indicator_ID", columns="Bank", values="Score_0_5"))
+    pv = pv.reindex(index=sorted(pv.index, key=_indicator_sort_key),
+                    columns=[b for b in BANKS if b in pv.columns])
+    all_na = [i for i in pv.index if pv.loc[i].isna().all()]
+    if hide_na:
+        pv = pv.drop(index=all_na)
+    return pv, all_na
+
+
+def fig_heatmap(year, pillar, sens, hide_na=False, dark=False):
+    t = theme(dark)
+    pv, _ = heat_frame(year, pillar, sens, hide_na)
+    if pv is None or pv.empty:
+        return go.Figure().update_layout(**base_layout(
+            dark, title=title_dict("Chưa có dữ liệu", dark), height=300))
+    ylabels = [f"{i} · {INDICATOR_NAME.get(i, '')}"[:46] for i in pv.index]
+    z = pv.values
+    fig = go.Figure(go.Heatmap(
+        z=z, x=list(pv.columns), y=ylabels, zmin=0, zmax=5, xgap=3, ygap=3,
+        colorscale=t["heat"], hoverongaps=False,
+        colorbar=dict(title="Điểm", thickness=14, len=0.6, outlinewidth=0),
+        hovertemplate="%{y}<br>%{x}: %{z:.1f}<extra></extra>"))
+    for i in range(z.shape[0]):
+        for j in range(z.shape[1]):
+            v = z[i, j]
+            if np.isnan(v):
+                txt, col = "N/A", t["na_text"]
+            else:
+                txt = f"{v:.1f}"
+                if dark:
+                    col = "#1B1238" if v >= 4.5 else "#FFFFFF"
+                else:
+                    col = "white" if v >= 3 else t["ink"]
+            fig.add_annotation(x=pv.columns[j], y=ylabels[i], showarrow=False, text=txt,
+                               font=dict(size=12, color=col))
+    n = len(pv.index)
+    fig.update_layout(**base_layout(
+        dark, title=title_dict(f"Ma trận {n} tiêu chí năm {year}", dark),
+        plot_bgcolor=t["na_bg"],  # ô N/A hiện nền tím nhạt
+        yaxis=dict(autorange="reversed", type="category", tickfont=dict(size=11)),
+        xaxis=dict(type="category", side="top", tickfont=dict(size=13)),
+        height=max(260, 34 * n + 120), margin=dict(l=30, r=30, t=90, b=20)))
+    return fig
+
+
+def heat_note(year, pillar, sens):
+    pv, all_na = heat_frame(year, pillar, sens, False)
+    parts = []
+    if all_na:
+        parts.append(f"{', '.join(all_na)} chưa có số liệu định lượng cùng định nghĩa cho cả "
+                     f"{len(BANKS)} ngân hàng trong năm {year} (N/A), nên không được tính vào điểm trụ cột "
+                     f"(xem data_quality.csv). Cần bổ sung dữ liệu gốc từ khâu thu thập.")
+    if pv is not None and (pv == 0).any().any():
+        parts.append("Điểm 0 nghĩa là không tìm thấy bằng chứng công khai trong phạm vi nguồn khảo sát, "
+                     "không khẳng định ngân hàng không triển khai.")
+    return " ".join(parts)
+
+
+def fig_h2h_trend(a, b, sens, dark=False):
+    t = theme(dark)
+    df = get_scores(sens)
+    fig = go.Figure()
+    for bank in (a, b):
+        d = df[df["Bank"] == bank].sort_values("Year")
+        fig.add_trace(go.Scatter(
+            x=d["Year"], y=d["Digital_Score"], mode="lines+markers+text", name=bank,
+            text=[f"{v:.2f}" for v in d["Digital_Score"]], textposition="top center",
+            line=dict(width=3, color=BANK_COLORS.get(bank, "#8B5CF6"), shape="spline", smoothing=0.5),
+            marker=dict(size=9, line=dict(width=2, color=t["card"]))))
+    fig.update_layout(**base_layout(
+        dark, title=title_dict(f"{a} và {b}: Digital Score {FIRST}–{LATEST}", dark), height=430,
+        xaxis=dict(tickmode="linear", dtick=1, gridcolor=t["grid"]),
+        yaxis=dict(title="Digital Score", gridcolor=t["grid"]), hovermode="x unified"))
+    return fig
+
+
+# ---------- Bản đồ định vị & SWOT ----------
+QUADRANTS = {
+    "TR": "Dẫn đầu · tăng nhanh", "TL": "Bám đuổi · tăng nhanh",
+    "BR": "Điểm cao · tăng chậm", "BL": "Cần tăng tốc",
+}
+
+
+def quadrant_of(x, y, xm, ym):
+    return QUADRANTS[("T" if y >= ym else "B") + ("R" if x >= xm else "L")]
+
+
+def pos_data(year, sens):
+    df = get_scores(sens)
+    cur = df[df["Year"] == year].set_index("Bank")
+    base = df[df["Year"] == FIRST].set_index("Bank")
+    d = pd.DataFrame({"x": cur["Digital_Score"], "y": cur["Digital_Score"] - base["Digital_Score"],
+                      "rank": cur["Rank"]}).dropna(subset=["x"])
+    d["y"] = d["y"].fillna(0)
+    return d
+
+
+def fig_positioning(year, sens, dark=False):
+    t = theme(dark)
+    d = pos_data(year, sens)
+    xm, ym = d["x"].mean(), d["y"].mean()
+    px_, py_ = max(0.25, (d["x"].max() - d["x"].min()) * 0.4), max(0.25, (d["y"].max() - d["y"].min()) * 0.4)
+    x0, x1 = d["x"].min() - px_, d["x"].max() + px_
+    y0, y1 = d["y"].min() - py_, d["y"].max() + py_
+    fig = go.Figure()
+    a = 0.16 if dark else 0.10
+    for (xa, xb, ya, yb, col) in [(xm, x1, ym, y1, f"139,92,246,{a}"), (x0, xm, ym, y1, f"244,114,182,{a}"),
+                                   (xm, x1, y0, ym, f"45,212,191,{a}"), (x0, xm, y0, ym, f"253,186,116,{a + 0.04}")]:
+        fig.add_shape(type="rect", x0=xa, x1=xb, y0=ya, y1=yb, fillcolor=f"rgba({col})",
+                      line=dict(width=0), layer="below")
+    for bank, r in d.iterrows():
+        fig.add_trace(go.Scatter(
+            x=[r["x"]], y=[r["y"]], mode="markers+text", text=[bank], textposition="top center",
+            textfont=dict(size=14, color=t["ink"]), name=bank, showlegend=False,
+            marker=dict(size=34, color=BANK_COLORS.get(bank, "#8B5CF6"), line=dict(width=3, color=t["card"])),
+            hovertemplate=f"<b>{bank}</b><br>Digital Score: {r['x']:.2f}<br>"
+                          f"Thay đổi so với {FIRST}: {r['y']:+.2f}<br>Hạng: {int(r['rank'])}<extra></extra>"))
+    fig.add_vline(x=xm, line_dash="dash", line_color=t["muted"], opacity=0.6)
+    fig.add_hline(y=ym, line_dash="dash", line_color=t["muted"], opacity=0.6)
+    for txt, x, y, xa, ya in [(QUADRANTS["TR"], x1, y1, "right", "top"), (QUADRANTS["TL"], x0, y1, "left", "top"),
+                              (QUADRANTS["BR"], x1, y0, "right", "bottom"), (QUADRANTS["BL"], x0, y0, "left", "bottom")]:
+        fig.add_annotation(x=x, y=y, text=txt, showarrow=False, xanchor=xa, yanchor=ya,
+                           font=dict(size=12, color=t["muted"]))
+    if year == FIRST:
+        fig.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+                           text=f"Năm đầu kỳ ({FIRST}) chưa có mức thay đổi để so sánh. Hãy chọn năm sau {FIRST}.",
+                           font=dict(size=13, color=t["muted"]), bgcolor=t["note_bg"])
+    fig.update_layout(**base_layout(
+        dark, title=title_dict(f"Bản đồ định vị năm {year}: vị thế và tốc độ cải thiện", dark), height=520,
+        xaxis=dict(title=f"Digital Score năm {year}", range=[x0, x1], gridcolor=t["grid"], zeroline=False),
+        yaxis=dict(title=f"Thay đổi điểm so với {FIRST}", range=[y0, y1], gridcolor=t["grid"], zeroline=False)))
+    return fig
+
+
+def build_swot(bank, year, sens):
+    df = get_scores(sens)
+    cur = df[df["Year"] == year].set_index("Bank")
+    if bank not in cur.index:
+        return None
+    avg, row = cur[PILLARS].mean(), cur.loc[bank]
+    S, W, O, T = [], [], [], []
+
+    # Trụ cột so với TB nhóm
+    pdelta = (row[PILLARS] - avg).dropna()
+    for p, dl in pdelta.sort_values(ascending=False).items():
+        if dl >= 0.05 and len(S) < 2:
+            S.append(f"Trụ cột {PILLAR_VN[p]}: {row[p]:.2f} điểm, cao hơn TB nhóm {dl:+.2f}")
+    for p, dl in pdelta.sort_values().items():
+        if dl <= -0.05 and len(W) < 2:
+            W.append(f"Trụ cột {PILLAR_VN[p]}: {row[p]:.2f} điểm, thấp hơn TB nhóm {dl:+.2f}")
+
+    # Tiêu chí so với các ngân hàng khác
+    s = scored[scored["Year"] == year]
+    if sens:
+        s = s[~s["Indicator_ID"].isin(QUANT_IDS)]
+    pv = (s.drop_duplicates(["Bank", "Indicator_ID"])
+          .pivot(index="Indicator_ID", columns="Bank", values="Score_0_5"))
+    if bank in pv.columns and pv.shape[1] > 1:
+        me, peers = pv[bank], pv.drop(columns=[bank])
+        peer_avg, peer_best = peers.mean(axis=1), peers.max(axis=1)
+        best_bank = peers.fillna(-1).idxmax(axis=1)
+        order = sorted(pv.index, key=_indicator_sort_key)
+
+        def nm(i):
+            return f"{i} {INDICATOR_NAME.get(i, '')}".strip()
+
+        lead = (me - peer_avg).reindex(order).dropna().sort_values(ascending=False, kind="stable")
+        for i, v in lead.items():
+            if me[i] >= 3 and v >= 1.0 and len(S) < 4:
+                S.append(f"{nm(i)}: {me[i]:.1f}, cao hơn TB các ngân hàng khác ({peer_avg[i]:.1f})")
+        for i, v in lead.sort_values(kind="stable").items():
+            if v <= -1.0 and len(W) < 4:
+                tail = " (chưa thấy bằng chứng công khai)" if me[i] == 0 else ""
+                W.append(f"{nm(i)}: {me[i]:.1f}, thấp hơn TB các ngân hàng khác ({peer_avg[i]:.1f}){tail}")
+        gap = (peer_best - me).reindex(order).dropna().sort_values(ascending=False, kind="stable")
+        for i, g in gap.items():
+            if g >= 1.0 and peer_best[i] >= 3 and len(O) < 3:
+                O.append(f"{nm(i)}: bạn {me[i]:.1f}, {best_bank[i]} đã đạt {peer_best[i]:.1f}. "
+                         f"Có thể học hỏi để bắt kịp")
+
+    # Thách thức: xu hướng
+    prev_year = year - 1
+    if prev_year in set(df["Year"]):
+        prev = df[df["Year"] == prev_year].set_index("Bank")
+        if bank in prev.index and int(row["Rank"]) > int(prev.loc[bank, "Rank"]):
+            T.append(f"Thứ hạng giảm từ {int(prev.loc[bank, 'Rank'])} xuống {int(row['Rank'])} so với {prev_year}")
+        sp = scored[(scored["Year"] == prev_year) & (scored["Bank"] == bank)].set_index("Indicator_ID")["Score_0_5"]
+        sc_ = scored[(scored["Year"] == year) & (scored["Bank"] == bank)].set_index("Indicator_ID")["Score_0_5"]
+        drops = (sc_ - sp.reindex(sc_.index)).dropna()
+        if sens:
+            drops = drops[~drops.index.isin(QUANT_IDS)]
+        for i, v in drops.sort_values(kind="stable").items():
+            if v <= -1.0 and len(T) < 3:
+                T.append(f"{i} {INDICATOR_NAME.get(i, '')}: giảm từ {sp[i]:.1f} ({prev_year}) xuống {sc_[i]:.1f}")
+    if year > FIRST:
+        first = df[df["Year"] == FIRST].set_index("Bank")
+        if bank in first.index:
+            rel = {}
+            for p in PILLARS:
+                mine = row[p] - first.loc[bank, p]
+                grp = (cur[p] - first[p]).mean()
+                if pd.notna(mine) and pd.notna(grp):
+                    rel[p] = (mine - grp, mine, grp)
+            for p, (r_, mine, grp) in sorted(rel.items(), key=lambda kv: kv[1][0]):
+                if r_ <= -0.05 and len(T) < 5:
+                    T.append(f"{PILLAR_VN[p]}: thay đổi {mine:+.2f} từ {FIRST}, kém hơn mức thay đổi TB nhóm ({grp:+.2f})")
+    return {"S": S, "W": W, "O": O, "T": T}
+
+
+def fmt_delta(x):
+    return f"{x:+.2f}"
+
+
+def delta_class(x):
+    return "up" if x > 0.005 else ("down" if x < -0.005 else "flat")
+
+
+def delta_icon(x):
+    return "🟢" if x > 0.005 else ("🔴" if x < -0.005 else "⚪")
+
+
+# ==========================================================
+# 3. THÀNH PHẦN GIAO DIỆN
+# ==========================================================
+def panel(children=None, title=None, hint=None, class_name="", **kw):
+    head = []
+    if title:
+        head.append(html.H3(title, className="panel-title"))
+    if hint:
+        head.append(html.P(hint, className="panel-hint"))
+    children = children or []
+    return html.Div(head + (children if isinstance(children, list) else [children]),
+                    className=f"panel {class_name}".strip(), **kw)
+
+
+def graph(gid, **kw):
+    return dcc.Graph(id=gid, config=GRAPH_CONFIG, **kw)
+
+
+def year_options():
+    return [{"label": f"Năm {y}", "value": y} for y in YEARS]
+
+
+def pillar_options(with_all=True):
+    opts = [{"label": "Tất cả trụ cột", "value": "ALL"}] if with_all else []
+    return opts + [{"label": PILLAR_VN[p], "value": p} for p in PILLARS]
+
+
+def atm_card(row, year, sens):
+    bank = row["Bank"]
+    moved = int(row["Rank_Full"]) - int(row["Rank"]) if sens else 0
+    shift = f" ▲{moved}" if moved > 0 else (f" ▼{-moved}" if moved < 0 else "")
+    rank = int(row["Rank"])
+    return html.Div(
+        className="atm-card" + (" is-top" if rank == 1 else ""),
+        style={"background": ATM_BACKGROUNDS.get(bank, DEFAULT_ATM_BG)},
+        children=[
+            html.Div(className="atm-top", children=[
+                html.Div(className="atm-chip"),
+                html.Span(f"🏆 Hạng {rank}{shift}", className="atm-rank")]),
+            html.Div(className="atm-mid", children=[
+                html.Div(bank, className="atm-bank"),
+                html.Div(BANK_NAMES.get(bank, ""), className="atm-fullname")]),
+            html.Div(className="atm-bottom", children=[
+                html.Div(f"•••• •••• •••• {year}", className="atm-number"),
+                html.Div([html.Span(f"{row['Digital_Score']:.2f}", className="atm-score"),
+                          html.Span(" / 5.0", className="atm-max")])]),
+        ])
+
+
+def bench_card(bank, row, avg):
+    d_all = row["Digital_Score"] - avg["Digital_Score"]
+    label = {"up": "Vượt", "down": "Dưới", "flat": "Ngang"}[delta_class(d_all)]
+    chips = []
+    for p in PILLARS:
+        dl = row[p] - avg[p]
+        chips.append(html.Span(
+            f"{delta_icon(dl)} {PILLAR_VN[p]} {row[p]:.2f} ({fmt_delta(dl)})",
+            className=f"chip {delta_class(dl)}"))
+    return html.Div(className="bench-card", children=[
+        html.Div(className="bench-head", children=[
+            html.Span(bank, className="bench-bank", style={"borderColor": BANK_COLORS.get(bank, "#8B5CF6")}),
+            html.Span(f"{row['Digital_Score']:.2f}", className="bench-score")]),
+        html.Div(f"{delta_icon(d_all)} {label} TB Nhóm Top 5 ({fmt_delta(d_all)})",
+                 className=f"badge {delta_class(d_all)}"),
+        html.Div(chips, className="chip-row"),
+    ])
+
+
+def swot_card(key, title, items):
+    body = ([html.Li(t) for t in items] if items
+            else [html.Li("Chưa ghi nhận điểm nổi bật theo dữ liệu hiện có", className="muted")])
+    return html.Div(className=f"swot swot-{key}", children=[
+        html.Div(className="swot-head", children=[html.Span(key, className="swot-letter"),
+                                                  html.Span(title, className="swot-title")]),
+        html.Ul(body)])
+
+
+# ==========================================================
+# 4. APP & LAYOUT
+# ==========================================================
+app = dash.Dash(__name__, title="Digital Banking Index 2021–2025", suppress_callback_exceptions=True)
+server = app.server
+
+NAV = [("btn-tab1", "📊  Overview & Trend"),
+       ("btn-tab2", "🎯  Pillar & Indicator"),
+       ("btn-tab3", "🔍  Evidence & Quality"),
+       ("btn-tab4", "🧭  Positioning & SWOT")]
+
+app.layout = html.Div(className="app-shell", children=[
+    dcc.Store(id="active-tab", data="btn-tab1"),
+    dcc.Store(id="theme-store", data="light"),
+
+    html.Aside(className="sidebar", children=[
+        html.Div(className="brand", children=[
+            html.Div("DBI", className="brand-mark"),
+            html.Div([html.Div("Digital Banking Index", className="brand-name"),
+                      html.Div("5 ngân hàng · 2021–2025", className="brand-sub")])]),
+        html.Nav([html.Button(label, id=bid, className="nav-btn" + (" active" if bid == "btn-tab1" else ""),
+                              n_clicks=0) for bid, label in NAV], className="nav"),
+        html.P("Chỉ số rút gọn dựa trên dữ liệu công khai (public-data-based), không phải DBI chính thức. "
+               "Cập nhật khi nguồn công khai được cập nhật; không phải dữ liệu realtime.",
+               className="side-note"),
+    ]),
+
+    html.Main(className="main", children=[
+        html.Header(className="topbar", children=[
+            html.Div([html.H1("Mức độ chuyển đổi số ngân hàng", className="page-title"),
+                      html.Div(id="scenario-note", className="scenario-note")]),
+            html.Div(className="controls", children=[
+                html.Div([html.Label("Năm", className="ctl-label"),
+                          dcc.Dropdown(id="g-year", options=year_options(), value=LATEST,
+                                       clearable=False, searchable=False, className="dd")], className="ctl"),
+                dcc.Checklist(id="g-sens", className="switch",
+                              options=[{"label": " Thử nghiệm loại bỏ 2 chỉ tiêu định lượng CUS2 & CUS3",
+                                        "value": "on"}], value=[]),
+                dcc.Checklist(id="g-theme", className="switch",
+                              options=[{"label": " 🌙 Chế độ tối", "value": "dark"}], value=[]),
+            ]),
+        ]),
+        html.Div(id="main-content"),
+    ]),
 ])
 
-# ==========================================
-# TRANG 1: OVERVIEW & TREND
-# ==========================================
-with tab1:
-    st.header("Tổng quan & Xu hướng (2021 - 2025)")
-    
-    col_year, _ = st.columns([1, 3])
-    with col_year:
-        years = sorted(final_scores_df['Year'].unique(), reverse=True)
-        selected_year = st.selectbox("Chọn Năm xem xếp hạng:", years, index=0)
-    
-    st.subheader(f"🏆 Bảng Xếp hạng Digital Score năm {selected_year}")
-    df_year = final_scores_df[final_scores_df['Year'] == selected_year].sort_values(by='Rank')
-    
-    cols = st.columns(len(df_year))
-    for idx, (_, row) in enumerate(df_year.iterrows()):
-        with cols[idx]:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-rank">Hạng {int(row['Rank'])}</div>
-                <div class="metric-bank">{row['Bank']}</div>
-                <div class="metric-score">{row['Digital_Score']:.2f} <span style="font-size:18px; color:#475569;">/ 5.0</span></div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-    st.markdown("<br>", unsafe_allow_html=True)
-    display_cols = [c for c in df_year.columns if c != 'Pillars_Available']
-    st.dataframe(df_year[display_cols], use_container_width="stretch")
-    
-    st.markdown("---")
-    st.plotly_chart(create_trend_line_chart(final_scores_df), use_container_width="stretch")
 
-# ==========================================
-# TRANG 2: PILLAR & INDICATOR
-# ==========================================
-with tab2:
-    st.header("Phân tích Trụ cột & Tiêu chí")
-    
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.subheader("Bộ lọc Phân tích")
-        p2_year = st.selectbox("Chọn Năm:", sorted(final_scores_df['Year'].unique(), reverse=True), key='p2_y')
-        all_banks = final_scores_df['Bank'].unique().tolist()
-        selected_banks = st.multiselect("Chọn Ngân hàng:", all_banks, default=all_banks)
-        
-    with col2:
-        if selected_banks:
-            fig_radar = create_pillar_radar_chart(final_scores_df, p2_year, selected_banks)
-            st.plotly_chart(fig_radar, use_container_width="stretch")
-        else:
-            st.warning("Vui lòng chọn ít nhất một ngân hàng.")
+def page_overview():
+    return html.Div(className="page", children=[
+        html.Div(id="p1-cards", className="atm-grid"),
+        html.Div(id="p1-insight", className="insight"),
+        panel([graph("p1-trend")]),
+        panel([html.Div(id="p1-table")], title="Bảng xếp hạng chi tiết",
+              hint="Điểm trụ cột là trung bình các tiêu chí hợp lệ; Digital Score là trung bình 6 trụ cột."),
+    ])
 
-    st.markdown("---")
-    st.subheader(f"📊 Heatmap Bảng điểm Chi tiết 24 Tiêu chí (Năm {p2_year})")
-    fig_heatmap = create_indicator_heatmap(scored_data_df, p2_year)
-    st.plotly_chart(fig_heatmap, use_container_width="stretch")
 
-# ==========================================
-# TRANG 3: EVIDENCE & DATA QUALITY
-# ==========================================
-with tab3:
-    st.header("Bằng chứng dữ liệu (Evidence) & Chất lượng Dữ liệu")
-    
-    subtab1, subtab2 = st.tabs(["🔎 Tra cứu Bằng chứng (Evidence)", "📈 Chất lượng Dữ liệu (Data Quality)"])
-    
-    with subtab1:
-        st.subheader("Bộ lọc tra cứu dữ liệu gốc")
-        f_col1, f_col2, f_col3 = st.columns(3)
-        with f_col1:
-            bank_f = st.selectbox("Ngân hàng:", ["Tất cả"] + list(raw_data_df['Bank'].unique()))
-        with f_col2:
-            year_f = st.selectbox("Năm:", ["Tất cả"] + list(sorted(raw_data_df['Year'].unique(), reverse=True)))
-        with f_col3:
-            pillar_f = st.selectbox("Trụ cột:", ["Tất cả"] + list(raw_data_df['Pillar'].unique()))
-            
-        filtered_raw = raw_data_df.copy()
-        if bank_f != "Tất cả":
-            filtered_raw = filtered_raw[filtered_raw['Bank'] == bank_f]
-        if year_f != "Tất cả":
-            filtered_raw = filtered_raw[filtered_raw['Year'] == year_f]
-        if pillar_f != "Tất cả":
-            filtered_raw = filtered_raw[filtered_raw['Pillar'] == pillar_f]
-            
-        st.dataframe(filtered_raw, use_container_width="stretch")
+def page_pillar():
+    top2 = BANKS[:2]
+    bank_opts = [{"label": b, "value": b} for b in BANKS]
+    h2h_year_opts = [{"label": f"Năm {y}", "value": y} for y in YEARS] + \
+                    [{"label": f"Cả {len(YEARS)} năm (xu hướng)", "value": "ALL"}]
+    return html.Div(className="page", children=[
+        panel(class_name="raised", children=[
+            html.Div(className="filter-row", children=[
+                html.Div([html.Label("Ngân hàng hiển thị trên radar và biểu đồ cột", className="ctl-label"),
+                          dcc.Checklist(id="p2-banks", options=bank_opts, value=BANKS, inline=True,
+                                        className="checks")], className="ctl grow")])]),
+        html.Div(className="grid-2", children=[panel([graph("p2-radar")]), panel([graph("p2-stack")])]),
+        panel(title="So với Trung bình Nhóm Khảo sát (Top 5 Average)",
+              hint="Mỗi chip hiển thị điểm thực của trụ cột và chênh lệch so với trung bình 5 ngân hàng trong "
+                   "nghiên cứu, không đại diện cho toàn ngành. Chênh lệch +0.00 nghĩa là điểm bằng trung bình nhóm.",
+              children=[html.Div(id="p2-bench", className="bench-grid")]),
+        panel(title="So sánh đối đầu (Head-to-Head)", class_name="raised", children=[
+            html.Div(className="filter-row", children=[
+                html.Div([html.Label("Ngân hàng A", className="ctl-label"),
+                          dcc.Dropdown(id="h2h-a", options=bank_opts, value=top2[0] if top2 else None,
+                                       clearable=False, searchable=False, className="dd")], className="ctl"),
+                html.Div("vs", className="vs"),
+                html.Div([html.Label("Ngân hàng B", className="ctl-label"),
+                          dcc.Dropdown(id="h2h-b", options=bank_opts, value=top2[1] if len(top2) > 1 else None,
+                                       clearable=False, searchable=False, className="dd")], className="ctl"),
+                html.Div([html.Label("Năm so sánh", className="ctl-label"),
+                          dcc.Dropdown(id="h2h-year", options=h2h_year_opts, value=LATEST,
+                                       clearable=False, searchable=False, className="dd")],
+                         className="ctl", style={"minWidth": "200px"}),
+            ]),
+            html.Div(className="grid-2 h2h", children=[html.Div(id="h2h-summary"), graph("h2h-chart")]),
+        ]),
+        panel(class_name="raised", title="Ma trận điểm từng tiêu chí", children=[
+            html.Div(className="filter-row", children=[
+                html.Div([html.Label("Lọc theo trụ cột", className="ctl-label"),
+                          dcc.Dropdown(id="p2-pillar", options=pillar_options(), value="ALL",
+                                       clearable=False, searchable=False, className="dd")],
+                         className="ctl", style={"minWidth": "240px"}),
+                dcc.Checklist(id="p2-hide-na", className="switch",
+                              options=[{"label": " Ẩn tiêu chí chưa có dữ liệu (N/A ở mọi ngân hàng)",
+                                        "value": "on"}], value=[]),
+            ]),
+            graph("p2-heatmap"),
+            html.P(id="p2-heat-note", className="panel-hint"),
+        ]),
+    ])
 
-    with subtab2:
-        st.subheader("Báo cáo Chất lượng Dữ liệu (Data Quality)")
-        st.dataframe(data_quality_df, use_container_width="stretch")
+
+def page_evidence():
+    return html.Div(className="page", children=[
+        panel(class_name="raised", title="Tra cứu bằng chứng gốc", children=[
+            html.Div(className="filter-row", children=[
+                html.Div([html.Label("Ngân hàng", className="ctl-label"),
+                          dcc.Dropdown(id="p3-bank", clearable=False, searchable=False, className="dd",
+                                       options=[{"label": "Tất cả ngân hàng", "value": "ALL"}] +
+                                               [{"label": b, "value": b} for b in BANKS],
+                                       value="ALL")], className="ctl"),
+                html.Div([html.Label("Trụ cột", className="ctl-label"),
+                          dcc.Dropdown(id="p3-pillar", options=pillar_options(), value="ALL",
+                                       clearable=False, searchable=False, className="dd")], className="ctl"),
+                html.Div([html.Label("Từ khóa (eKYC, Cloud, Core Banking…)", className="ctl-label"),
+                          dcc.Input(id="p3-kw", type="text", debounce=False, className="search",
+                                    placeholder="Gõ từ khóa để lọc đoạn trích dẫn")], className="ctl grow"),
+                dcc.Checklist(id="p3-allyears", className="switch",
+                              options=[{"label": " Xem tất cả các năm", "value": "on"}], value=[]),
+            ]),
+            html.Div(id="p3-count", className="result-count"),
+            html.Div(id="p3-table"),
+        ]),
+        html.Div(className="grid-2", children=[panel([graph("p3-donut")]), panel([graph("p3-bar")])]),
+        panel(title="Bảng chất lượng dữ liệu (data_quality.csv)", children=[
+            dash_table.DataTable(
+                data=dq_df.to_dict("records"), columns=[{"name": c, "id": c} for c in dq_df.columns],
+                page_size=8, style_table={"overflowX": "auto"},
+                style_header={"backgroundColor": "#8B5CF6", "color": "white", "fontWeight": "700",
+                              "border": "none", "fontFamily": FONT},
+                style_cell={"textAlign": "left", "fontFamily": FONT, "fontSize": "12.5px", "padding": "8px 10px",
+                            "border": "none", "borderBottom": "1px solid var(--line)",
+                            "backgroundColor": "transparent", "color": "var(--ink)"},
+            ) if not dq_df.empty else html.P("Không tìm thấy data_quality.csv.", className="panel-hint"),
+        ]),
+    ])
+
+
+def page_position():
+    return html.Div(className="page", children=[
+        panel(title="Bản đồ định vị",
+              hint="Trục ngang là Digital Score của năm đang chọn; trục dọc là mức thay đổi so với đầu kỳ. "
+                   "Hai đường nét đứt là trung bình của nhóm 5 ngân hàng.",
+              children=[graph("pos-map"), html.Div(id="pos-chips", className="chip-row")]),
+        panel(class_name="raised", title="Ma trận SWOT tương đối",
+              hint="SWOT rút từ dữ liệu công khai khi so với nhóm 5 ngân hàng: S/W là vị thế so với trung bình nhóm, "
+                   "O/T là khoảng cách với ngân hàng tốt nhất và xu hướng theo thời gian. "
+                   "Đây là gợi ý định vị, không phải đánh giá nội bộ.",
+              children=[
+                  html.Div(className="filter-row", children=[
+                      html.Div([html.Label("Chọn ngân hàng", className="ctl-label"),
+                                dcc.Dropdown(id="swot-bank", options=[{"label": b, "value": b} for b in BANKS],
+                                             value=BANKS[0], clearable=False, searchable=False,
+                                             className="dd")], className="ctl")]),
+                  html.Div(id="swot-grid", className="swot-grid")]),
+    ])
+
+
+PAGES = {"btn-tab1": page_overview, "btn-tab2": page_pillar, "btn-tab3": page_evidence,
+         "btn-tab4": page_position}
+
+# ==========================================================
+# 5. CALLBACKS
+# ==========================================================
+@app.callback([Output("active-tab", "data")] + [Output(bid, "className") for bid, _ in NAV],
+              [Input(bid, "n_clicks") for bid, _ in NAV])
+def update_active_tab(*_):
+    triggered = dash.callback_context.triggered
+    bid = triggered[0]["prop_id"].split(".")[0] if triggered else "btn-tab1"
+    if bid not in PAGES:
+        bid = "btn-tab1"
+    return (bid, *["nav-btn active" if k == bid else "nav-btn" for k, _ in NAV])
+
+
+@app.callback(Output("main-content", "children"), Input("active-tab", "data"))
+def render_tab(active):
+    return PAGES.get(active, page_overview)()
+
+
+@app.callback(Output("scenario-note", "children"), Input("g-sens", "value"))
+def scenario_note(sens):
+    if not sens:
+        return "Kịch bản đầy đủ: 24 tiêu chí"
+    note = "Kịch bản kiểm tra độ nhạy: 22 tiêu chí (bỏ CUS2, CUS3)"
+    if SENS_IDENTICAL:
+        note += ". CUS2 và CUS3 hiện đều N/A nên kết quả trùng kịch bản đầy đủ"
+    return note
+
+
+# ---- Trang 1 ----
+@app.callback([Output("p1-cards", "children"), Output("p1-insight", "children"),
+               Output("p1-trend", "figure"), Output("p1-table", "children")],
+              [Input("g-year", "value"), Input("g-sens", "value"), Input("g-theme", "value")])
+def update_overview(year, sens_v, theme_v):
+    sens, dark = bool(sens_v), bool(theme_v)
+    df = get_scores(sens)
+    d = df[df["Year"] == year].sort_values(["Rank", "Bank"])
+    cards = [atm_card(r, year, sens) for _, r in d.iterrows()]
+
+    insight = []
+    if len(d) >= 2:
+        gap = d.iloc[0]["Digital_Score"] - d.iloc[1]["Digital_Score"]
+        insight.append(html.Div([
+            html.Strong(f"Dẫn đầu {year}: {d.iloc[0]['Bank']} ({d.iloc[0]['Digital_Score']:.2f})"),
+            html.Span(f"Hơn hạng 2 ({d.iloc[1]['Bank']}) {gap:.2f} điểm")]))
+    first = df[df["Year"] == FIRST].set_index("Bank")["Digital_Score"]
+    last = df[df["Year"] == LATEST].set_index("Bank")["Digital_Score"]
+    growth = (last - first).dropna().sort_values(ascending=False)
+    if not growth.empty:
+        insight.append(html.Div([
+            html.Strong(f"Tăng nhiều nhất {FIRST}–{LATEST}: {growth.index[0]} ({growth.iloc[0]:+.2f})"),
+            html.Span(f"Ít nhất: {growth.index[-1]} ({growth.iloc[-1]:+.2f})")]))
+
+    t = d[["Rank", "Bank"] + PILLARS + ["Digital_Score"]].copy()
+    t[PILLARS + ["Digital_Score"]] = t[PILLARS + ["Digital_Score"]].round(2)
+    cols = [{"name": "Hạng", "id": "Rank"}, {"name": "Ngân hàng", "id": "Bank"}] + \
+           [{"name": PILLAR_VN[p], "id": p} for p in PILLARS] + [{"name": "Digital Score", "id": "Digital_Score"}]
+    if sens:
+        t["Rank_Full"] = d["Rank_Full"].values
+        t["Shift"] = [("▲" + str(rf - r)) if rf > r else (("▼" + str(r - rf)) if rf < r else "–")
+                      for rf, r in zip(d["Rank_Full"], d["Rank"])]
+        cols += [{"name": "Hạng (24 TC)", "id": "Rank_Full"}, {"name": "Thay đổi", "id": "Shift"}]
+    table = dash_table.DataTable(
+        data=t.to_dict("records"), columns=cols, style_table={"overflowX": "auto"},
+        style_header={"backgroundColor": "#8B5CF6", "color": "white", "fontWeight": "700", "border": "none",
+                      "fontFamily": FONT, "textAlign": "center"},
+        style_cell={"textAlign": "center", "fontFamily": FONT, "fontSize": "13.5px", "padding": "11px",
+                    "border": "none", "borderBottom": "1px solid var(--line)",
+                    "backgroundColor": "transparent", "color": "var(--ink)"},
+        style_cell_conditional=[{"if": {"column_id": "Bank"}, "textAlign": "left", "fontWeight": "700"}],
+        style_data_conditional=[
+            {"if": {"filter_query": "{Rank} = 1"}, "backgroundColor": "rgba(224,86,199,0.10)", "fontWeight": "700"},
+            {"if": {"column_id": "Digital_Score"}, "fontWeight": "800", "color": "var(--accent-text)"}])
+    return cards, insight, fig_trend(sens, dark), table
+
+
+# ---- Trang 2 ----
+@app.callback([Output("p2-radar", "figure"), Output("p2-stack", "figure"), Output("p2-bench", "children")],
+              [Input("g-year", "value"), Input("g-sens", "value"), Input("p2-banks", "value"),
+               Input("g-theme", "value")])
+def update_pillar_charts(year, sens_v, banks, theme_v):
+    sens, banks, dark = bool(sens_v), banks or [], bool(theme_v)
+    d = get_scores(sens)
+    d = d[d["Year"] == year]
+    avg = d[PILLARS + ["Digital_Score"]].mean()
+    bench = [bench_card(b, d[d["Bank"] == b].iloc[0], avg)
+             for b in BANKS if b in banks and not d[d["Bank"] == b].empty]
+    if not bench:
+        bench = [html.P("Chọn ít nhất một ngân hàng để xem so sánh.", className="panel-hint")]
+    else:
+        bench.insert(0, html.Div(f"Trung bình Nhóm Top 5 năm {year}: {avg['Digital_Score']:.2f}",
+                                 className="bench-avg"))
+    return (fig_radar(year, banks, sens, f"Sáu trụ cột năm {year}", dark),
+            fig_stacked(year, banks, sens, dark), bench)
+
+
+@app.callback([Output("p2-heatmap", "figure"), Output("p2-heat-note", "children")],
+              [Input("g-year", "value"), Input("g-sens", "value"),
+               Input("p2-pillar", "value"), Input("p2-hide-na", "value"), Input("g-theme", "value")])
+def update_heatmap(year, sens_v, pillar, hide_na, theme_v):
+    sens = bool(sens_v)
+    return fig_heatmap(year, pillar, sens, bool(hide_na), bool(theme_v)), heat_note(year, pillar, sens)
+
+
+@app.callback([Output("h2h-summary", "children"), Output("h2h-chart", "figure")],
+              [Input("g-sens", "value"), Input("h2h-a", "value"), Input("h2h-b", "value"),
+               Input("h2h-year", "value"), Input("g-theme", "value")])
+def update_h2h(sens_v, a, b, year, theme_v):
+    sens, dark = bool(sens_v), bool(theme_v)
+    if not a or not b or a == b:
+        return html.P("Chọn hai ngân hàng khác nhau để so sánh.", className="panel-hint"), go.Figure()
+    df = get_scores(sens)
+
+    # --- Chế độ cả 5 năm ---
+    if year == "ALL":
+        rows, wa, wb = [], 0, 0
+        for y in sorted(YEARS):
+            dy = df[df["Year"] == y].set_index("Bank")
+            if a not in dy.index or b not in dy.index:
+                continue
+            sa, sb = dy.loc[a, "Digital_Score"], dy.loc[b, "Digital_Score"]
+            wa, wb = wa + (sa > sb), wb + (sb > sa)
+            rows.append(html.Tr([html.Td(str(y)), html.Td(f"{sa:.2f}"), html.Td(f"{sb:.2f}"),
+                                 html.Td(f"{sa - sb:+.2f}", className=delta_class(sa - sb))]))
+        head = f"{FIRST}–{LATEST}: {a} dẫn trước {wa} năm, {b} dẫn trước {wb} năm"
+        table = html.Table(className="h2h-table", children=[
+            html.Thead(html.Tr([html.Th("Năm"), html.Th(a), html.Th(b), html.Th(f"{a} − {b}")])),
+            html.Tbody(rows)])
+        return html.Div(className="h2h-box", children=[html.Div(head, className="h2h-head"), table]), \
+            fig_h2h_trend(a, b, sens, dark)
+
+    # --- Chế độ một năm ---
+    d = df[df["Year"] == year].set_index("Bank")
+    if a not in d.index or b not in d.index:
+        return html.P("Thiếu dữ liệu cho năm đã chọn.", className="panel-hint"), go.Figure()
+    diff = d.loc[a, "Digital_Score"] - d.loc[b, "Digital_Score"]
+    if abs(diff) < 0.005:
+        head = f"{a} và {b} ngang điểm ({d.loc[a, 'Digital_Score']:.2f}) năm {year}"
+    else:
+        win, lose = (a, b) if diff > 0 else (b, a)
+        head = f"Năm {year}: {win} cao hơn {lose} {abs(diff):.2f} điểm Digital Score"
+
+    s = scored[(scored["Year"] == year) & scored["Bank"].isin([a, b])]
+    if sens:
+        s = s[~s["Indicator_ID"].isin(QUANT_IDS)]
+    pv = (s.drop_duplicates(["Bank", "Indicator_ID"]).pivot(index="Indicator_ID", columns="Bank",
+                                                            values="Score_0_5")
+          .reindex(columns=[a, b]).dropna())
+    pv["diff"] = pv[a] - pv[b]
+
+    def lines(sub, w, l):
+        if sub.empty:
+            return [html.Li("Không có tiêu chí nào", className="muted")]
+        return [html.Li([html.Strong(f"{i} "), INDICATOR_NAME.get(i, ""),
+                         html.Span(f"  {r[w]:.1f} vs {r[l]:.1f}", className="muted")])
+                for i, r in sub.iterrows()]
+
+    a_win = pv[pv["diff"] > 0].sort_values("diff", ascending=False, kind="stable").head(3)
+    b_win = pv[pv["diff"] < 0].sort_values("diff", kind="stable").head(3)
+    summary = html.Div(className="h2h-box", children=[
+        html.Div(head, className="h2h-head"),
+        html.H4(f"Top 3 tiêu chí {a} hơn {b}", className="h2h-sub"), html.Ol(lines(a_win, a, b)),
+        html.H4(f"Top 3 tiêu chí {b} hơn {a}", className="h2h-sub"), html.Ol(lines(b_win, b, a)),
+    ])
+    return summary, fig_radar(year, [a, b], sens, f"{a} và {b} năm {year}", dark)
+
+
+# ---- Trang 3 ----
+@app.callback([Output("p3-count", "children"), Output("p3-table", "children"),
+               Output("p3-donut", "figure"), Output("p3-bar", "figure")],
+              [Input("g-year", "value"), Input("p3-bank", "value"), Input("p3-pillar", "value"),
+               Input("p3-kw", "value"), Input("p3-allyears", "value"), Input("g-theme", "value")])
+def update_evidence(year, bank, pillar, kw, allyears, theme_v):
+    all_years, dark = bool(allyears), bool(theme_v)
+    t = theme(dark)
+
+    def scope(df):
+        if not all_years:
+            df = df[df["Year"] == year]
+        if bank and bank != "ALL":
+            df = df[df["Bank"] == bank]
+        if pillar and pillar != "ALL":
+            df = df[df["PillarKey"] == pillar]
+        return df
+
+    ev = scope(EVID)
+    kw_clean = (kw or "").strip().lower()
+    if kw_clean:
+        ev = ev[ev["_search"].str.contains(re.escape(kw_clean), na=False)]
+    ev = ev.assign(_k=ev["Indicator_ID"].map(_indicator_sort_key)).sort_values(
+        ["Year", "Bank", "_k"], ascending=[False, True, True])
+    show = ev[EVID_SHOW_COLS]
+    count = f"{len(show)} dòng bằng chứng" + (f' khớp "{kw.strip()}"' if kw_clean else "")
+    if show.empty:
+        table = html.P("Không có bằng chứng khớp bộ lọc. Thử bỏ từ khóa hoặc chọn thêm năm.", className="panel-hint")
+    else:
+        table = dash_table.DataTable(
+            data=show.round(2).to_dict("records"),
+            columns=[{"name": EVID_HEADER.get(c, c.replace("_", " ")), "id": c} for c in EVID_SHOW_COLS],
+            page_size=8, style_table={"overflowX": "auto"},
+            style_header={"backgroundColor": "#8B5CF6", "color": "white", "fontWeight": "700",
+                          "border": "none", "fontFamily": FONT},
+            style_cell={"textAlign": "left", "fontFamily": FONT, "fontSize": "12.5px", "padding": "10px",
+                        "border": "none", "borderBottom": "1px solid var(--line)",
+                        "backgroundColor": "transparent", "color": "var(--ink)", "verticalAlign": "top",
+                        "minWidth": "70px", "maxWidth": "200px", "whiteSpace": "normal", "height": "auto"},
+            style_cell_conditional=[
+                {"if": {"column_id": "Evidence"}, "minWidth": "340px", "maxWidth": "480px"},
+                {"if": {"column_id": "Indicator"}, "minWidth": "150px"},
+                {"if": {"column_id": "Score_0_5"}, "minWidth": "80px"},
+                {"if": {"column_id": "Source_Link"}, "maxWidth": "160px", "overflow": "hidden",
+                 "textOverflow": "ellipsis"}],
+            style_data_conditional=[
+                {"if": {"filter_query": '{Evidence} contains "NOT_FOUND"'}, "color": "#9A8FBF"},
+                {"if": {"column_id": "Score_0_5"}, "fontWeight": "800", "color": "var(--accent-text)"}])
+
+    sc = scope(scored)
+    found, zero, na = int((sc["Score_0_5"] > 0).sum()), int((sc["Score_0_5"] == 0).sum()), int(sc["Score_0_5"].isna().sum())
+    total = found + zero + na
+    rate = f"{found / total:.0%}" if total else "–"
+    donut = go.Figure(go.Pie(
+        labels=["Có bằng chứng (điểm > 0)", "Không tìm thấy bằng chứng công khai (điểm 0)",
+                "N/A (thiếu dữ liệu định lượng)"],
+        values=[found, zero, na], hole=0.62, sort=False,
+        marker=dict(colors=["#8B5CF6", "#F472B6", t["na_slice"]], line=dict(color=t["pie_edge"], width=2)),
+        textinfo="value", hovertemplate="%{label}<br>%{value} tiêu chí (%{percent})<extra></extra>"))
+    donut.update_layout(**base_layout(
+        dark, title=title_dict("Tỷ lệ tìm thấy dữ liệu công khai", dark), height=400,
+        legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center", font=dict(size=11)),
+        annotations=[dict(text=f"<b>{rate}</b><br>tìm thấy", x=0.5, y=0.5, showarrow=False,
+                          font=dict(size=20, family=FONT, color=t["ink"]))]))
+
+    cnt = scope(EVID)
+    cnt = cnt[cnt["Is_Valid_Evidence"]].groupby(["Year", "Bank"]).size().reset_index(name="n")
+    bar = go.Figure()
+    for b in BANKS:
+        sub = cnt[cnt["Bank"] == b].sort_values("Year")
+        bar.add_trace(go.Bar(x=sub["Year"], y=sub["n"], name=b, marker_color=BANK_COLORS.get(b, "#8B5CF6"),
+                             hovertemplate=b + " %{x}: %{y} bằng chứng<extra></extra>"))
+    bar.update_layout(**base_layout(
+        dark, title=title_dict("Số bằng chứng hợp lệ theo năm và ngân hàng", dark), barmode="group", height=400,
+        xaxis=dict(tickmode="linear", dtick=1), yaxis=dict(title="Số bằng chứng", gridcolor=t["grid"])))
+    return count, table, donut, bar
+
+
+# ---- Trang 4 ----
+@app.callback([Output("pos-map", "figure"), Output("pos-chips", "children")],
+              [Input("g-year", "value"), Input("g-sens", "value"), Input("g-theme", "value")])
+def update_position(year, sens_v, theme_v):
+    sens = bool(sens_v)
+    d = pos_data(year, sens)
+    xm, ym = d["x"].mean(), d["y"].mean()
+    chips = []
+    if year != FIRST:
+        for bank, r in d.sort_values("rank").iterrows():
+            chips.append(html.Span(f"{bank}: {quadrant_of(r['x'], r['y'], xm, ym)}", className="chip flat"))
+    return fig_positioning(year, sens, bool(theme_v)), chips
+
+
+@app.callback(Output("swot-grid", "children"),
+              [Input("g-year", "value"), Input("g-sens", "value"), Input("swot-bank", "value")])
+def update_swot(year, sens_v, bank):
+    res = build_swot(bank, year, bool(sens_v))
+    if res is None:
+        return html.P("Thiếu dữ liệu cho lựa chọn này.", className="panel-hint")
+    return [swot_card("S", "Điểm mạnh (so với nhóm)", res["S"]),
+            swot_card("W", "Điểm yếu (so với nhóm)", res["W"]),
+            swot_card("O", "Cơ hội (học hỏi từ ngân hàng dẫn đầu tiêu chí)", res["O"]),
+            swot_card("T", "Thách thức (xu hướng và vị thế)", res["T"])]
+
+
+# ---- Chế độ tối: đặt thuộc tính data-theme lên <html> (CSS đổi màu theo biến) ----
+app.clientside_callback(
+    """function(v) {
+        var t = (v && v.length) ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+        return t;
+    }""",
+    Output("theme-store", "data"), Input("g-theme", "value"))
+
+
+if __name__ == "__main__":
+    app.run(debug=True, port=8050)
