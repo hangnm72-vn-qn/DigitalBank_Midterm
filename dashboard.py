@@ -1,12 +1,3 @@
-"""
-Dashboard DBI 2021–2025 (public-data-based Digital Banking Index)
-
-Chạy:  python dashboard.py   ->  http://127.0.0.1:8050
-
-Dữ liệu chỉ đọc từ các file đã khóa:
-    final_scores.csv, scored_data.csv, raw_data.csv, data_quality.csv
-Giao diện (CSS) nằm ở assets/style.css.
-"""
 import os
 import re
 import unicodedata
