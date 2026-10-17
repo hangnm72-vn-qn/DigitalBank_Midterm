@@ -10,9 +10,6 @@ plotly>=5.15
 pandas>=2.0
 numpy>=1.24
 
-# --- Triển khai lên Render / server (gunicorn chạy dashboard:server) ---
-gunicorn>=21.2
-
 # --- Chấm điểm (scoring.py): chỉ dùng pandas, numpy ở trên ---
 
 # --- Thu thập dữ liệu (data_collection.py) ---
