@@ -208,4 +208,5 @@ Score = 5 × (Xi − Xmin) / (Xmax − Xmin)
 | Font chữ không đúng | Cần Internet để tải font Google Fonts; khi offline sẽ dùng font hệ thống |
 
 **Digital Banking Index 2021–2025 — Public data, evidence-based scoring, transparent comparison.**
+
 **Live demo: https://digital-banking-index.onrender.com/**
