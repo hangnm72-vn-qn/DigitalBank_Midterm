@@ -68,15 +68,14 @@ def _read_csv(name, required=True):
         return pd.DataFrame()
     return pd.read_csv(path)
 
-
 def _clean_keys(df):
     df = df.copy()
+    # Cắt sạch khoảng trắng thừa và ép chữ hoa cho Bank
     df["Bank"] = df["Bank"].astype(str).str.strip().str.upper()
     df["Year"] = pd.to_numeric(df["Year"], errors="coerce")
     df = df.dropna(subset=["Year"])
     df["Year"] = df["Year"].astype(int)
     return df
-
 
 def _norm(text):
     """Bỏ dấu tiếng Việt, ký tự đặc biệt, chữ hoa -> so khớp tên cột linh hoạt."""
@@ -84,17 +83,25 @@ def _norm(text):
     t = "".join(ch for ch in t if not unicodedata.combining(ch))
     return re.sub(r"[^a-z0-9]", "", t.lower())
 
+def load_all_data():
+    """Hàm nạp lại dữ liệu CSV trực tiếp từ đĩa để tránh dính Cache cũ."""
+    final_full = _clean_keys(_read_csv("final_scores.csv"))
+    scored = _clean_keys(_read_csv("scored_data.csv"))
+    raw = _clean_keys(_read_csv("raw_data.csv"))
+    dq_df = _read_csv("data_quality.csv", required=False)
 
-final_full = _clean_keys(_read_csv("final_scores.csv"))
-scored = _clean_keys(_read_csv("scored_data.csv"))
-raw = _clean_keys(_read_csv("raw_data.csv"))
-dq_df = _read_csv("data_quality.csv", required=False)
+    # Đảm bảo ép sạch Indicator_ID không dính khoảng trắng
+    scored["Indicator_ID"] = scored["Indicator_ID"].astype(str).str.strip().str.upper()
+    scored["Score_0_5"] = pd.to_numeric(scored["Score_0_5"], errors="coerce")
+    scored["PillarKey"] = scored["Indicator_ID"].str[:3].map(PILLAR_PREFIX)
 
-scored["Indicator_ID"] = scored["Indicator_ID"].astype(str).str.strip().str.upper()
-scored["Score_0_5"] = pd.to_numeric(scored["Score_0_5"], errors="coerce")
-scored["PillarKey"] = scored["Indicator_ID"].str[:3].map(PILLAR_PREFIX)
-raw["Indicator_ID"] = raw["Indicator_ID"].astype(str).str.strip().str.upper()
-raw["PillarKey"] = raw["Indicator_ID"].str[:3].map(PILLAR_PREFIX)
+    raw["Indicator_ID"] = raw["Indicator_ID"].astype(str).str.strip().str.upper()
+    raw["PillarKey"] = raw["Indicator_ID"].str[:3].map(PILLAR_PREFIX)
+
+    return final_full, scored, raw, dq_df
+
+# Kích hoạt nạp dữ liệu
+final_full, scored, raw, dq_df = load_all_data()
 
 # --- Nhận diện tên cột trụ cột trong final_scores.csv ---
 PILLAR_ALIASES = {
@@ -135,9 +142,13 @@ if "Rank" not in final_full.columns:
 final_full["Rank"] = final_full["Rank"].fillna(99).astype(int)
 final_full["Rank_Full"] = final_full["Rank"]
 
-INDICATOR_NAME = (scored.dropna(subset=["Indicator"]).drop_duplicates("Indicator_ID")
-                  .set_index("Indicator_ID")["Indicator"].to_dict()
-                  if "Indicator" in scored.columns else {})
+# Sửa lại cách tạo Dict Tên chỉ tiêu: loại bỏ khoảng trắng và dòng trống
+if "Indicator" in scored.columns:
+    _valid_ind = scored.dropna(subset=["Indicator"]).copy()
+    _valid_ind["Indicator_ID"] = _valid_ind["Indicator_ID"].astype(str).str.strip().str.upper()
+    INDICATOR_NAME = _valid_ind.drop_duplicates("Indicator_ID").set_index("Indicator_ID")["Indicator"].to_dict()
+else:
+    INDICATOR_NAME = {}
 
 
 def _indicator_sort_key(ind_id):
@@ -385,7 +396,8 @@ def heat_note(year, pillar, sens):
                      f"(xem data_quality.csv). Cần bổ sung dữ liệu gốc từ khâu thu thập.")
     if pv is not None and (pv == 0).any().any():
         parts.append("Điểm 0 nghĩa là không tìm thấy bằng chứng công khai trong phạm vi nguồn khảo sát, "
-                     "không khẳng định ngân hàng không triển khai.")
+                     "không khẳng định ngân hàng không triển khai. Điểm 1–5 theo mức độ triển khai mô tả trong "
+                     "bằng chứng; bằng chứng không chứa từ khóa mức nào được chấm mặc định 2.")
     return " ".join(parts)
 
 
@@ -524,7 +536,11 @@ def build_swot(bank, year, sens):
             drops = drops[~drops.index.isin(QUANT_IDS)]
         for i, v in drops.sort_values(kind="stable").items():
             if v <= -1.0 and len(T) < 3:
-                T.append(f"{i} {INDICATOR_NAME.get(i, '')}: giảm từ {sp[i]:.1f} ({prev_year}) xuống {sc_[i]:.1f}")
+                if sc_[i] == 0:
+                    T.append(f"{i} {INDICATOR_NAME.get(i, '')}: không còn thấy bằng chứng công khai năm {year} "
+                             f"(năm {prev_year}: {sp[i]:.1f})")
+                else:
+                    T.append(f"{i} {INDICATOR_NAME.get(i, '')}: giảm từ {sp[i]:.1f} ({prev_year}) xuống {sc_[i]:.1f}")
     if year > FIRST:
         first = df[df["Year"] == FIRST].set_index("Bank")
         if bank in first.index:
@@ -813,8 +829,12 @@ def render_tab(active):
 
 @app.callback(Output("scenario-note", "children"), Input("g-sens", "value"))
 def scenario_note(sens):
+    n_scored = int(scored.loc[scored["Score_0_5"].notna(), "Indicator_ID"].nunique())
     if not sens:
-        return "Kịch bản đầy đủ: 24 tiêu chí"
+        base = "Kịch bản đầy đủ: 24 tiêu chí"
+        if n_scored < 24:
+            base += f" ({n_scored} tiêu chí có điểm; tiêu chí N/A không tính vào trụ cột)"
+        return base
     note = "Kịch bản kiểm tra độ nhạy: 22 tiêu chí (bỏ CUS2, CUS3)"
     if SENS_IDENTICAL:
         note += ". CUS2 và CUS3 hiện đều N/A nên kết quả trùng kịch bản đầy đủ"
@@ -983,13 +1003,15 @@ def update_evidence(year, bank, pillar, kw, allyears, theme_v):
         ev = ev[ev["_search"].str.contains(re.escape(kw_clean), na=False)]
     ev = ev.assign(_k=ev["Indicator_ID"].map(_indicator_sort_key)).sort_values(
         ["Year", "Bank", "_k"], ascending=[False, True, True])
-    show = ev[EVID_SHOW_COLS]
+    show = ev[EVID_SHOW_COLS].copy()
+    if "Score_0_5" in show.columns:
+        show["Score_0_5"] = show["Score_0_5"].astype(object).where(show["Score_0_5"].notna(), "N/A")
     count = f"{len(show)} dòng bằng chứng" + (f' khớp "{kw.strip()}"' if kw_clean else "")
     if show.empty:
         table = html.P("Không có bằng chứng khớp bộ lọc. Thử bỏ từ khóa hoặc chọn thêm năm.", className="panel-hint")
     else:
         table = dash_table.DataTable(
-            data=show.round(2).to_dict("records"),
+            data=show.to_dict("records"),
             columns=[{"name": EVID_HEADER.get(c, c.replace("_", " ")), "id": c} for c in EVID_SHOW_COLS],
             page_size=8, style_table={"overflowX": "auto"},
             style_header={"backgroundColor": "#8B5CF6", "color": "white", "fontWeight": "700",
@@ -1009,19 +1031,24 @@ def update_evidence(year, bank, pillar, kw, allyears, theme_v):
                 {"if": {"column_id": "Score_0_5"}, "fontWeight": "800", "color": "var(--accent-text)"}])
 
     sc = scope(scored)
-    found, zero, na = int((sc["Score_0_5"] > 0).sum()), int((sc["Score_0_5"] == 0).sum()), int(sc["Score_0_5"].isna().sum())
-    total = found + zero + na
-    rate = f"{found / total:.0%}" if total else "–"
+    na = int(sc["Score_0_5"].isna().sum())
+    scoreable = sc[sc["Score_0_5"].notna()]
+    if "Evidence_Missing" in scoreable.columns:
+        no_ev = scoreable["Evidence_Missing"].astype(bool)
+    else:
+        no_ev = scoreable["Score_0_5"] == 0
+    zero, found = int(no_ev.sum()), int((~no_ev).sum())
+    rate = f"{found / (found + zero):.0%}" if (found + zero) else "–"
     donut = go.Figure(go.Pie(
-        labels=["Có bằng chứng (điểm > 0)", "Không tìm thấy bằng chứng công khai (điểm 0)",
-                "N/A (thiếu dữ liệu định lượng)"],
+        labels=["Có bằng chứng công khai (điểm 0–5 theo rubric)", "Không tìm thấy bằng chứng công khai (điểm 0)",
+                "N/A (CUS2/CUS3 chưa đủ số liệu so sánh, không tính điểm)"],
         values=[found, zero, na], hole=0.62, sort=False,
         marker=dict(colors=["#8B5CF6", "#F472B6", t["na_slice"]], line=dict(color=t["pie_edge"], width=2)),
         textinfo="value", hovertemplate="%{label}<br>%{value} tiêu chí (%{percent})<extra></extra>"))
     donut.update_layout(**base_layout(
         dark, title=title_dict("Tỷ lệ tìm thấy dữ liệu công khai", dark), height=400,
         legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center", font=dict(size=11)),
-        annotations=[dict(text=f"<b>{rate}</b><br>tìm thấy", x=0.5, y=0.5, showarrow=False,
+        annotations=[dict(text=f"<b>{rate}</b><br>tìm thấy<br>(trên tiêu chí có điểm)", x=0.5, y=0.5, showarrow=False,
                           font=dict(size=20, family=FONT, color=t["ink"]))]))
 
     cnt = scope(EVID)
@@ -1074,4 +1101,19 @@ app.clientside_callback(
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=8050)
+    import subprocess
+
+    # 1. Tự động chạy lại Pipeline để cập nhật dữ liệu mới từ auto_score & clean_raw_data
+    try:
+        print("\n[INFO] Đang tự động chạy Pipeline cập nhật dữ liệu mới...")
+        subprocess.run(["python", "clean_raw_data.py"], check=True)
+        subprocess.run(["python", "auto_score.py"], check=True)
+        subprocess.run(["python", "scoring.py"], check=True)
+        print("✅ Đã cập nhật xong dữ liệu mới nhất vào CSV!\n")
+    except Exception as e:
+        print(f"[CẢNH BÁO] Không thể tự động chạy pipeline: {e}\n")
+
+    # 2. Nạp cổng linh hoạt (hỗ trợ cả Localhost lẫn Deploy Cloud)
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    port = int(os.environ.get("PORT", 8050))
+    app.run(debug=True, host=host, port=port)

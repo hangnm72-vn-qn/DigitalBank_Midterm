@@ -1,10 +1,21 @@
+"""Ghi điểm Score_0_5 vào raw_data.csv bằng ĐÚNG rubric của scoring.py.
+
+Rubric nằm ở một nơi duy nhất (scoring.py) để hai file không bao giờ lệch nhau.
+CUS2/CUS3 (định lượng) để trống; scoring.py sẽ Min-Max hoặc đánh N/A.
+"""
+from pathlib import Path
+
 import pandas as pd
 
-df = pd.read_csv("raw_data.csv")
+from scoring import QUANT_INDICATORS, qualitative_score
 
-QUANT_INDICATORS = {"CUS2", "CUS3"}
+RAW_FILE = Path(__file__).resolve().parent / "raw_data.csv"
+
+df = pd.read_csv(RAW_FILE, encoding="utf-8-sig")
+
 
 def auto_assign_score(row):
+<<<<<<< HEAD
     indicator = str(row.get("Indicator_ID", "")).strip()
     evidence = str(row.get("Evidence", "")).strip().lower()
 
@@ -36,10 +47,21 @@ def auto_assign_score(row):
 
     # Mặc định có Evidence hợp lệ -> Mức 2.0
     return 2.0
+=======
+    if str(row.get("Indicator_ID", "")).strip() in QUANT_INDICATORS:
+        return None
+    return qualitative_score(row)[0]
+
+>>>>>>> 8e2475829b75b894667f46862eb35c0b1fea47f6
 
 # Gán lại cột Score_0_5
 df["Score_0_5"] = df.apply(auto_assign_score, axis=1)
+<<<<<<< HEAD
 
 # Lưu lại file raw_data.csv
 df.to_csv("raw_data.csv", index=False, encoding="utf-8-sig")
 print("✅ Đã cập nhật xong cột Score_0_5 tách biệt rõ ràng giữa 0.0 và N/A!")
+=======
+df.to_csv(RAW_FILE, index=False, encoding="utf-8-sig")
+print("✅ Đã cập nhật Score_0_5 theo rubric của scoring.py!")
+>>>>>>> 8e2475829b75b894667f46862eb35c0b1fea47f6
