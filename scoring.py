@@ -23,13 +23,7 @@ PILLAR_ORDER = [
 ]
 QUANT_INDICATORS = {"CUS2", "CUS3"}
 
-# Framework: an indicator missing for >= 3 banks in the same year is not used
-# that year, so at least (n_banks - 2) banks must report a value.
 MAX_MISSING_BANKS_PER_YEAR = 2
-
-# Evidence present but no tier keyword found: rubric level 3 = "implemented,
-# clear evidence" (level 2 is reserved for pilot / very limited scope).
-DEFAULT_EVIDENCE_SCORE = 3.0
 
 # Rubric tiers, checked from level 5 down to level 1 (first match wins).
 QUALITATIVE_TIERS: list[tuple[float, list[str]]] = [
@@ -39,11 +33,6 @@ QUALITATIVE_TIERS: list[tuple[float, list[str]]] = [
     (2.0, ["pilot", "thử nghiệm", "thuc nghiem", "trial", "phạm vi nhỏ", "đang ứng dụng"]),
     (1.0, ["kế hoạch", "ke hoach", "định hướng", "lộ trình", "dự kiến", "plan", "planned", "planning"]),
 ]
-
-
-def _keyword_found(keyword: str, text: str) -> bool:
-    """Whole-word/phrase match, so 'plan' does not fire on 'explanation'."""
-    return re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", text) is not None
 
 
 def is_missing(value: Any) -> bool:
@@ -82,22 +71,22 @@ def qualitative_score(row: pd.Series) -> tuple[float | None, str]:
     """Score one qualitative row from its Evidence text only (0-5 or N/A)."""
     evidence = normalize_text(row.get("Evidence", ""))
     
-    # 1. Bỏ qua nếu không tìm thấy minh chứng công khai -> Trả về N/A (np.nan)
+    # Quy tắc 1: Thiếu bằng chứng -> N/A (np.nan), KHÔNG phải 0.0
     if not evidence or "not_found_public_evidence" in evidence:
         return np.nan, "N/A: No public evidence found"
 
-    # 2. Kiểm tra nếu có bằng chứng xác nhận CHƯA TRIỂN KHAI -> Gán 0.0
+    # Quy tắc 2: Điểm 0 chỉ khi có bằng chứng xác nhận chưa/không triển khai
     zero_keywords = ["chưa triển khai", "không triển khai", "ngưng", "dừng", "chua trien khai"]
     if any(k in evidence for k in zero_keywords):
         return 0.0, "Score 0.0: Confirmed not implemented"
 
-    # 3. Quét các mức từ 5.0 xuống 1.0 theo từ khóa Rubric A.1
+    # Quy tắc 3: Điểm 1-5 theo từ khóa Rubric A.1
     for tier_score, keywords in QUALITATIVE_TIERS:
         for keyword in keywords:
-            if keyword in evidence:  # Dùng substring match đơn giản để không bỏ sót từ
+            if keyword in evidence:
                 return tier_score, f"Keyword tier {tier_score:g}: {keyword}"
 
-    # 4. Có minh chứng hợp lệ nhưng không dính từ khóa đặc biệt -> Mức 2.0 (Bước đầu)
+    # Có bằng chứng hợp lệ nhưng phạm vi nhỏ / chưa khớp từ khóa đặc biệt -> Mức 2.0
     return 2.0, "Evidence found, default tier 2.0"
 
 
@@ -135,6 +124,7 @@ def build_scored_data(raw: pd.DataFrame) -> pd.DataFrame:
             cleaned.at[idx, "Score_0_5"] = score
             cleaned.at[idx, "Scoring_Basis"] = basis
 
+    # Quy tắc 4: CUS2/CUS3 dùng Min-Max; thiếu dữ liệu hợp lệ -> N/A
     n_banks = int(cleaned["Bank"].nunique())
     min_available = max(1, n_banks - MAX_MISSING_BANKS_PER_YEAR)
     for indicator in sorted(QUANT_INDICATORS):
@@ -143,7 +133,7 @@ def build_scored_data(raw: pd.DataFrame) -> pd.DataFrame:
         n_by_year = sub.groupby("Year")["Numeric_Value"].apply(lambda s: int(s.notna().sum()))
         usable_years = set(n_by_year[n_by_year >= min_available].index)
         usable = mask & cleaned["Year"].isin(usable_years)
-        # default: not scoreable, with the reason written per row
+        
         cleaned.loc[mask, "Score_0_5"] = np.nan
         for year, n in n_by_year.items():
             ymask = mask & cleaned["Year"].eq(year)
@@ -172,7 +162,13 @@ def build_final_scores(scored: pd.DataFrame) -> pd.DataFrame:
     )
     final = pillar.pivot_table(index=["Bank", "Year"], columns="Pillar", values="Score_0_5")
     final = final.reindex(columns=PILLAR_ORDER)
-    final["Digital_Score"] = final[PILLAR_ORDER].mean(axis=1, skipna=True).round(4)
+    
+    # Quy tắc 5: Digital Score là trung bình 6 trụ cột; thiếu hoàn toàn 1 trụ cột -> N/A (nhờ skipna=False nếu có pillar bị NaN hoàn toàn)
+    # Nếu tất cả 6 trụ cột đều có ít nhất 1 chỉ tiêu chấm được -> Tính trung bình. Nếu thiếu nguyên 1 trụ cột -> Digital_Score = NaN (N/A)
+    final["Digital_Score"] = final[PILLAR_ORDER].apply(
+        lambda row: row.mean() if row.notna().all() else np.nan, axis=1
+    ).round(4)
+    
     final["Pillars_Available"] = final[PILLAR_ORDER].notna().sum(axis=1)
     final = final.reset_index()
     final["Rank"] = final.groupby("Year")["Digital_Score"].rank(method="min", ascending=False, na_option="keep").astype("Int64")
@@ -196,7 +192,9 @@ def build_sensitivity(scored: pd.DataFrame, full: pd.DataFrame) -> pd.DataFrame:
     reduced = scored[~scored["Indicator_ID"].isin(QUANT_INDICATORS)]
     pillar = reduced.groupby(["Bank", "Year", "Pillar"])["Score_0_5"].mean().reset_index()
     reduced_final = pillar.pivot_table(index=["Bank", "Year"], columns="Pillar", values="Score_0_5").reindex(columns=PILLAR_ORDER)
-    reduced_final["Digital_Score_Without_CUS2_CUS3"] = reduced_final[PILLAR_ORDER].mean(axis=1, skipna=True)
+    reduced_final["Digital_Score_Without_CUS2_CUS3"] = reduced_final[PILLAR_ORDER].apply(
+        lambda row: row.mean() if row.notna().all() else np.nan, axis=1
+    )
     reduced_final = reduced_final[["Digital_Score_Without_CUS2_CUS3"]].reset_index()
     reduced_final["Rank_Without_CUS2_CUS3"] = reduced_final.groupby("Year")["Digital_Score_Without_CUS2_CUS3"].rank(method="min", ascending=False, na_option="keep").astype("Int64")
     result = full[["Bank", "Year", "Digital_Score", "Rank"]].merge(reduced_final, on=["Bank", "Year"], how="left")
