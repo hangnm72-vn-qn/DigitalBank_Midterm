@@ -78,17 +78,27 @@ def parse_number(value: Any) -> float:
         return np.nan
 
 
-def qualitative_score(row: pd.Series) -> tuple[float, str]:
-    """Score one qualitative row from its Evidence text only (0-5)."""
+def qualitative_score(row: pd.Series) -> tuple[float | None, str]:
+    """Score one qualitative row from its Evidence text only (0-5 or N/A)."""
     evidence = normalize_text(row.get("Evidence", ""))
+    
+    # 1. Bỏ qua nếu không tìm thấy minh chứng công khai -> Trả về N/A (np.nan)
     if not evidence or "not_found_public_evidence" in evidence:
-        return 0.0, "No public evidence found; score 0 per rubric"
+        return np.nan, "N/A: No public evidence found"
 
+    # 2. Kiểm tra nếu có bằng chứng xác nhận CHƯA TRIỂN KHAI -> Gán 0.0
+    zero_keywords = ["chưa triển khai", "không triển khai", "ngưng", "dừng", "chua trien khai"]
+    if any(k in evidence for k in zero_keywords):
+        return 0.0, "Score 0.0: Confirmed not implemented"
+
+    # 3. Quét các mức từ 5.0 xuống 1.0 theo từ khóa Rubric A.1
     for tier_score, keywords in QUALITATIVE_TIERS:
         for keyword in keywords:
-            if _keyword_found(keyword, evidence):
+            if keyword in evidence:  # Dùng substring match đơn giản để không bỏ sót từ
                 return tier_score, f"Keyword tier {tier_score:g}: {keyword}"
-    return DEFAULT_EVIDENCE_SCORE, f"Evidence found, no tier keyword; default {DEFAULT_EVIDENCE_SCORE:g}"
+
+    # 4. Có minh chứng hợp lệ nhưng không dính từ khóa đặc biệt -> Mức 2.0 (Bước đầu)
+    return 2.0, "Evidence found, default tier 2.0"
 
 
 def min_max_score(series: pd.Series) -> pd.Series:
