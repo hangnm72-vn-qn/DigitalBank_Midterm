@@ -134,13 +134,16 @@ for _p in PILLARS:
         final_full[_p] = np.nan
     else:
         final_full[_p] = pd.to_numeric(final_full[_p], errors="coerce")
+
+
+def _all_pillars_mean(df):
+    """Digital Score = TB 6 trụ cột; thiếu bất kỳ trụ cột nào -> N/A (khớp scoring.py)."""
+    return df[PILLARS].mean(axis=1).where(df[PILLARS].notna().all(axis=1))
+
+
 if "Digital_Score" not in final_full.columns:
-    final_full["Digital_Score"] = final_full[PILLARS].mean(axis=1)
-if "Rank" not in final_full.columns:
-    final_full["Rank"] = final_full.groupby("Year")["Digital_Score"].rank(
-        method="min", ascending=False)
-final_full["Rank"] = final_full["Rank"].fillna(99).astype(int)
-final_full["Rank_Full"] = final_full["Rank"]
+    final_full["Digital_Score"] = _all_pillars_mean(final_full)
+final_full["Digital_Score"] = pd.to_numeric(final_full["Digital_Score"], errors="coerce")
 
 # Sửa lại cách tạo Dict Tên chỉ tiêu: loại bỏ khoảng trắng và dòng trống
 if "Indicator" in scored.columns:
@@ -166,10 +169,9 @@ def compute_final(drop_ids=()):
         if p not in piv.columns:
             piv[p] = np.nan
     piv = piv[PILLARS]
-    piv["Digital_Score"] = piv.mean(axis=1)
+    piv["Digital_Score"] = _all_pillars_mean(piv)   # thiếu 1 trụ cột -> N/A, giống scoring.py
     out = piv.reset_index()
-    out["Rank"] = (out.groupby("Year")["Digital_Score"]
-                   .rank(method="min", ascending=False).fillna(99).astype(int))
+    out["Rank"] = out.groupby("Year")["Digital_Score"].rank(method="min", ascending=False)  # N/A giữ NaN
     return out
 
 
@@ -178,12 +180,23 @@ _re = compute_final(())
 _fill = final_full[["Bank", "Year"]].merge(_re[["Bank", "Year"] + PILLARS], on=["Bank", "Year"], how="left")
 for _p in PILLARS:
     _vals = pd.Series(_fill[_p].values, index=final_full.index)
-    if final_full[_p].isna().any():
-        print(f"[CẢNH BÁO] Trụ cột {_p} thiếu trong final_scores.csv -> bổ sung từ scored_data.csv")
-        final_full[_p] = final_full[_p].fillna(_vals)
+    _before = int(final_full[_p].isna().sum())
+    final_full[_p] = final_full[_p].fillna(_vals)
+    _filled = _before - int(final_full[_p].isna().sum())
+    if _filled:
+        print(f"[CẢNH BÁO] Trụ cột {_p}: bổ sung {_filled} ô từ scored_data.csv")
 
-final_sens = compute_final(QUANT_IDS).merge(
-    final_full[["Bank", "Year", "Rank_Full"]], on=["Bank", "Year"], how="left")
+# Bank-year thiếu hẳn một trụ cột (không có bằng chứng nào chấm được) -> Digital_Score/Rank = N/A.
+# Các view xếp hạng chỉ dùng bank-year có điểm; phần còn lại được ghi chú là "chưa xếp hạng".
+final_full["Digital_Score"] = final_full["Digital_Score"].fillna(_all_pillars_mean(final_full))
+ALL_BANKS = sorted(final_full["Bank"].unique().tolist())
+final_full = final_full[final_full["Digital_Score"].notna()].copy()
+final_full["Rank"] = final_full.groupby("Year")["Digital_Score"].rank(method="min", ascending=False).astype(int)
+final_full["Rank_Full"] = final_full["Rank"]
+
+final_sens = (compute_final(QUANT_IDS).dropna(subset=["Digital_Score"])
+              .merge(final_full[["Bank", "Year", "Rank_Full"]], on=["Bank", "Year"], how="left"))
+final_sens["Rank"] = final_sens["Rank"].astype(int)
 final_sens["Rank_Full"] = final_sens["Rank_Full"].fillna(final_sens["Rank"]).astype(int)
 SCENARIOS = {False: final_full, True: final_sens}
 
@@ -194,7 +207,7 @@ def get_scores(sens):
 
 # Kịch bản bỏ CUS2/CUS3 có khác kịch bản đầy đủ không?
 _cmp = final_full.merge(final_sens, on=["Bank", "Year"], suffixes=("", "_s"))
-SENS_IDENTICAL = bool(len(_cmp) and (_cmp["Digital_Score"] - _cmp["Digital_Score_s"]).abs().max() < 1e-9)
+SENS_IDENTICAL = bool(len(_cmp) and (_cmp["Digital_Score"] - _cmp["Digital_Score_s"]).abs().max() < 1e-3)  # CSV làm tròn 4 chữ số
 
 
 def check_consistency():
@@ -270,17 +283,17 @@ def fig_trend(sens, dark=False):
     df = get_scores(sens)
     fig = go.Figure()
     for bank in BANKS:
-        d = df[df["Bank"] == bank].sort_values("Year")
+        d = df[df["Bank"] == bank].set_index("Year").reindex(sorted(YEARS)).reset_index()
         fig.add_trace(go.Scatter(
-            x=d["Year"], y=d["Digital_Score"], mode="lines+markers", name=bank,
+            x=d["Year"], y=d["Digital_Score"], mode="lines+markers", name=bank, connectgaps=False,
             line=dict(width=3, color=BANK_COLORS.get(bank, "#8B5CF6"), shape="spline", smoothing=0.5),
             marker=dict(size=9, line=dict(width=2, color=t["card"])), hovertemplate="%{y:.2f}"))
     avg = df.groupby("Year")["Digital_Score"].mean().sort_index()
-    fig.add_trace(go.Scatter(x=avg.index, y=avg.values, mode="lines", name="TB Nhóm Top 5",
+    fig.add_trace(go.Scatter(x=avg.index, y=avg.values, mode="lines", name="TB các NH có điểm",
                              line=dict(width=2.5, color=t["avg"], dash="dash"), hovertemplate="%{y:.2f}"))
     lo, hi = df["Digital_Score"].min(), df["Digital_Score"].max()
     fig.update_layout(**base_layout(
-        dark, title=title_dict("Digital Score 2021–2025 và Trung bình Nhóm Top 5", dark),
+        dark, title=title_dict("Digital Score 2021–2025 (năm thiếu bằng chứng ở một trụ cột: N/A, không vẽ)", dark),
         xaxis=dict(tickmode="linear", dtick=1, gridcolor=t["grid"]),
         yaxis=dict(title="Digital Score (0–5)", gridcolor=t["grid"],
                    range=[max(0, lo - 0.3), min(5, hi + 0.3)]),
@@ -394,10 +407,11 @@ def heat_note(year, pillar, sens):
         parts.append(f"{', '.join(all_na)} chưa có số liệu định lượng cùng định nghĩa cho cả "
                      f"{len(BANKS)} ngân hàng trong năm {year} (N/A), nên không được tính vào điểm trụ cột "
                      f"(xem data_quality.csv). Cần bổ sung dữ liệu gốc từ khâu thu thập.")
-    if pv is not None and (pv == 0).any().any():
-        parts.append("Điểm 0 nghĩa là không tìm thấy bằng chứng công khai trong phạm vi nguồn khảo sát, "
-                     "không khẳng định ngân hàng không triển khai. Điểm 1–5 theo mức độ triển khai mô tả trong "
-                     "bằng chứng; bằng chứng không chứa từ khóa mức nào được chấm mặc định 2.")
+    if pv is not None and pv.isna().any().any():
+        parts.append("Ô N/A: không tìm thấy bằng chứng công khai (hoặc thiếu số liệu so sánh), không phải điểm 0 "
+                     "và không tính vào điểm trụ cột; không khẳng định ngân hàng không triển khai. "
+                     "Điểm 0 chỉ khi bằng chứng xác nhận chưa/không triển khai. Điểm 1–5 theo mức độ triển khai "
+                     "trong bằng chứng; bằng chứng không chứa từ khóa mức nào được chấm mặc định 2.")
     return " ".join(parts)
 
 
@@ -430,19 +444,41 @@ def quadrant_of(x, y, xm, ym):
     return QUADRANTS[("T" if y >= ym else "B") + ("R" if x >= xm else "L")]
 
 
-def pos_data(year, sens):
+def _pos_all(year, sens):
     df = get_scores(sens)
     cur = df[df["Year"] == year].set_index("Bank")
-    base = df[df["Year"] == FIRST].set_index("Bank")
-    d = pd.DataFrame({"x": cur["Digital_Score"], "y": cur["Digital_Score"] - base["Digital_Score"],
-                      "rank": cur["Rank"]}).dropna(subset=["x"])
-    d["y"] = d["y"].fillna(0)
-    return d
+    rows = {}
+    for bank, r in cur.iterrows():
+        prior = df[(df["Bank"] == bank) & (df["Year"] < year)].sort_values("Year")
+        if prior.empty:
+            rows[bank] = dict(x=r["Digital_Score"], y=np.nan, rank=r["Rank"], base=year)
+        else:
+            rows[bank] = dict(x=r["Digital_Score"], y=r["Digital_Score"] - prior.iloc[0]["Digital_Score"],
+                              rank=r["Rank"], base=int(prior.iloc[0]["Year"]))
+    cols = ["x", "y", "rank", "base"]
+    return pd.DataFrame.from_dict(rows, orient="index", columns=cols) if rows else pd.DataFrame(columns=cols)
+
+
+def pos_data(year, sens):
+    """Chỉ gồm ngân hàng có điểm năm này VÀ có mốc so sánh (một năm trước đó có điểm)."""
+    return _pos_all(year, sens).dropna(subset=["x", "y"])
+
+
+def pos_nobase(year, sens):
+    a = _pos_all(year, sens)
+    return a[a["y"].isna()].index.tolist()
 
 
 def fig_positioning(year, sens, dark=False):
     t = theme(dark)
     d = pos_data(year, sens)
+    if d.empty:
+        fig = go.Figure()
+        fig.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+                           text="Chưa đủ dữ liệu để so sánh: cần ít nhất hai năm có Digital Score của cùng một ngân hàng.",
+                           font=dict(size=13, color=t["muted"]), bgcolor=t["note_bg"])
+        fig.update_layout(**base_layout(dark, title=title_dict(f"Bản đồ định vị năm {year}", dark), height=520))
+        return fig
     xm, ym = d["x"].mean(), d["y"].mean()
     px_, py_ = max(0.25, (d["x"].max() - d["x"].min()) * 0.4), max(0.25, (d["y"].max() - d["y"].min()) * 0.4)
     x0, x1 = d["x"].min() - px_, d["x"].max() + px_
@@ -459,21 +495,22 @@ def fig_positioning(year, sens, dark=False):
             textfont=dict(size=14, color=t["ink"]), name=bank, showlegend=False,
             marker=dict(size=34, color=BANK_COLORS.get(bank, "#8B5CF6"), line=dict(width=3, color=t["card"])),
             hovertemplate=f"<b>{bank}</b><br>Digital Score: {r['x']:.2f}<br>"
-                          f"Thay đổi so với {FIRST}: {r['y']:+.2f}<br>Hạng: {int(r['rank'])}<extra></extra>"))
+                          f"Thay đổi so với {int(r['base'])}: {r['y']:+.2f}<br>Hạng: {int(r['rank'])}<extra></extra>"))
     fig.add_vline(x=xm, line_dash="dash", line_color=t["muted"], opacity=0.6)
     fig.add_hline(y=ym, line_dash="dash", line_color=t["muted"], opacity=0.6)
     for txt, x, y, xa, ya in [(QUADRANTS["TR"], x1, y1, "right", "top"), (QUADRANTS["TL"], x0, y1, "left", "top"),
                               (QUADRANTS["BR"], x1, y0, "right", "bottom"), (QUADRANTS["BL"], x0, y0, "left", "bottom")]:
         fig.add_annotation(x=x, y=y, text=txt, showarrow=False, xanchor=xa, yanchor=ya,
                            font=dict(size=12, color=t["muted"]))
-    if year == FIRST:
-        fig.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
-                           text=f"Năm đầu kỳ ({FIRST}) chưa có mức thay đổi để so sánh. Hãy chọn năm sau {FIRST}.",
-                           font=dict(size=13, color=t["muted"]), bgcolor=t["note_bg"])
+    _nb = pos_nobase(year, sens)
+    if _nb:
+        fig.add_annotation(x=0.01, y=0.01, xref="paper", yref="paper", showarrow=False, xanchor="left",
+                           yanchor="bottom", text=f"Chưa có mốc so sánh: {', '.join(_nb)}",
+                           font=dict(size=12, color=t["muted"]), bgcolor=t["note_bg"])
     fig.update_layout(**base_layout(
         dark, title=title_dict(f"Bản đồ định vị năm {year}: vị thế và tốc độ cải thiện", dark), height=520,
         xaxis=dict(title=f"Digital Score năm {year}", range=[x0, x1], gridcolor=t["grid"], zeroline=False),
-        yaxis=dict(title=f"Thay đổi điểm so với {FIRST}", range=[y0, y1], gridcolor=t["grid"], zeroline=False)))
+        yaxis=dict(title="Thay đổi điểm so với năm đầu có điểm của từng ngân hàng", range=[y0, y1], gridcolor=t["grid"], zeroline=False)))
     return fig
 
 
@@ -515,32 +552,35 @@ def build_swot(bank, year, sens):
                 S.append(f"{nm(i)}: {me[i]:.1f}, cao hơn TB các ngân hàng khác ({peer_avg[i]:.1f})")
         for i, v in lead.sort_values(kind="stable").items():
             if v <= -1.0 and len(W) < 4:
-                tail = " (chưa thấy bằng chứng công khai)" if me[i] == 0 else ""
+                tail = " (bằng chứng xác nhận chưa triển khai)" if me[i] == 0 else ""
                 W.append(f"{nm(i)}: {me[i]:.1f}, thấp hơn TB các ngân hàng khác ({peer_avg[i]:.1f}){tail}")
-        gap = (peer_best - me).reindex(order).dropna().sort_values(ascending=False, kind="stable")
+        gap = (peer_best - me.fillna(0)).reindex(order).dropna().sort_values(ascending=False, kind="stable")
         for i, g in gap.items():
             if g >= 1.0 and peer_best[i] >= 3 and len(O) < 3:
-                O.append(f"{nm(i)}: bạn {me[i]:.1f}, {best_bank[i]} đã đạt {peer_best[i]:.1f}. "
+                mine_txt = "chưa thấy bằng chứng công khai" if pd.isna(me[i]) else f"{me[i]:.1f}"
+                O.append(f"{nm(i)}: bạn {mine_txt}, {best_bank[i]} đã đạt {peer_best[i]:.1f}. "
                          f"Có thể học hỏi để bắt kịp")
 
     # Thách thức: xu hướng
     prev_year = year - 1
     if prev_year in set(df["Year"]):
         prev = df[df["Year"] == prev_year].set_index("Bank")
-        if bank in prev.index and int(row["Rank"]) > int(prev.loc[bank, "Rank"]):
+        if bank in prev.index and len(prev) == len(cur) and int(row["Rank"]) > int(prev.loc[bank, "Rank"]):
             T.append(f"Thứ hạng giảm từ {int(prev.loc[bank, 'Rank'])} xuống {int(row['Rank'])} so với {prev_year}")
         sp = scored[(scored["Year"] == prev_year) & (scored["Bank"] == bank)].set_index("Indicator_ID")["Score_0_5"]
         sc_ = scored[(scored["Year"] == year) & (scored["Bank"] == bank)].set_index("Indicator_ID")["Score_0_5"]
         drops = (sc_ - sp.reindex(sc_.index)).dropna()
         if sens:
             drops = drops[~drops.index.isin(QUANT_IDS)]
+        lost = [i for i in sc_.index if pd.isna(sc_[i]) and pd.notna(sp.get(i, np.nan))
+                and not (sens and i in QUANT_IDS)]
+        for i in sorted(lost, key=_indicator_sort_key):
+            if len(T) < 3:
+                T.append(f"{i} {INDICATOR_NAME.get(i, '')}: không còn thấy bằng chứng công khai năm {year} "
+                         f"(năm {prev_year}: {sp[i]:.1f})")
         for i, v in drops.sort_values(kind="stable").items():
             if v <= -1.0 and len(T) < 3:
-                if sc_[i] == 0:
-                    T.append(f"{i} {INDICATOR_NAME.get(i, '')}: không còn thấy bằng chứng công khai năm {year} "
-                             f"(năm {prev_year}: {sp[i]:.1f})")
-                else:
-                    T.append(f"{i} {INDICATOR_NAME.get(i, '')}: giảm từ {sp[i]:.1f} ({prev_year}) xuống {sc_[i]:.1f}")
+                T.append(f"{i} {INDICATOR_NAME.get(i, '')}: giảm từ {sp[i]:.1f} ({prev_year}) xuống {sc_[i]:.1f}")
     if year > FIRST:
         first = df[df["Year"] == FIRST].set_index("Bank")
         if bank in first.index:
@@ -857,6 +897,11 @@ def update_overview(year, sens_v, theme_v):
         insight.append(html.Div([
             html.Strong(f"Dẫn đầu {year}: {d.iloc[0]['Bank']} ({d.iloc[0]['Digital_Score']:.2f})"),
             html.Span(f"Hơn hạng 2 ({d.iloc[1]['Bank']}) {gap:.2f} điểm")]))
+    unranked = [b for b in ALL_BANKS if b not in set(d["Bank"])]
+    if unranked:
+        insight.append(html.Div([
+            html.Strong(f"Chưa xếp hạng năm {year}: {', '.join(unranked)}"),
+            html.Span("Thiếu bằng chứng ở ít nhất một trụ cột (N/A), không bị tính 0 điểm")]))
     first = df[df["Year"] == FIRST].set_index("Bank")["Digital_Score"]
     last = df[df["Year"] == LATEST].set_index("Bank")["Digital_Score"]
     growth = (last - first).dropna().sort_values(ascending=False)
@@ -902,7 +947,7 @@ def update_pillar_charts(year, sens_v, banks, theme_v):
     if not bench:
         bench = [html.P("Chọn ít nhất một ngân hàng để xem so sánh.", className="panel-hint")]
     else:
-        bench.insert(0, html.Div(f"Trung bình Nhóm Top 5 năm {year}: {avg['Digital_Score']:.2f}",
+        bench.insert(0, html.Div(f"Trung bình {len(d)} NH có điểm năm {year}: {avg['Digital_Score']:.2f}",
                                  className="bench-avg"))
     return (fig_radar(year, banks, sens, f"Sáu trụ cột năm {year}", dark),
             fig_stacked(year, banks, sens, dark), bench)
@@ -1032,23 +1077,21 @@ def update_evidence(year, bank, pillar, kw, allyears, theme_v):
 
     sc = scope(scored)
     na = int(sc["Score_0_5"].isna().sum())
-    scoreable = sc[sc["Score_0_5"].notna()]
-    if "Evidence_Missing" in scoreable.columns:
-        no_ev = scoreable["Evidence_Missing"].astype(bool)
-    else:
-        no_ev = scoreable["Score_0_5"] == 0
-    zero, found = int(no_ev.sum()), int((~no_ev).sum())
-    rate = f"{found / (found + zero):.0%}" if (found + zero) else "–"
+    scored_rows = sc[sc["Score_0_5"].notna()]
+    zero = int(((scored_rows["Score_0_5"] == 0) & ~scored_rows["Indicator_ID"].isin(QUANT_IDS)).sum())
+    found = len(scored_rows) - zero
+    total = found + zero + na
+    rate = f"{found / total:.0%}" if total else "–"
     donut = go.Figure(go.Pie(
-        labels=["Có bằng chứng công khai (điểm 0–5 theo rubric)", "Không tìm thấy bằng chứng công khai (điểm 0)",
-                "N/A (CUS2/CUS3 chưa đủ số liệu so sánh, không tính điểm)"],
+        labels=["Có bằng chứng, đã chấm điểm (1–5)", "Bằng chứng xác nhận chưa triển khai (điểm 0)",
+                "N/A (không tìm thấy bằng chứng công khai hoặc thiếu số liệu so sánh)"],
         values=[found, zero, na], hole=0.62, sort=False,
         marker=dict(colors=["#8B5CF6", "#F472B6", t["na_slice"]], line=dict(color=t["pie_edge"], width=2)),
         textinfo="value", hovertemplate="%{label}<br>%{value} tiêu chí (%{percent})<extra></extra>"))
     donut.update_layout(**base_layout(
         dark, title=title_dict("Tỷ lệ tìm thấy dữ liệu công khai", dark), height=400,
         legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center", font=dict(size=11)),
-        annotations=[dict(text=f"<b>{rate}</b><br>tìm thấy<br>(trên tiêu chí có điểm)", x=0.5, y=0.5, showarrow=False,
+        annotations=[dict(text=f"<b>{rate}</b><br>có điểm<br>(trên tổng tiêu chí)", x=0.5, y=0.5, showarrow=False,
                           font=dict(size=20, family=FONT, color=t["ink"]))]))
 
     cnt = scope(EVID)
@@ -1072,7 +1115,7 @@ def update_position(year, sens_v, theme_v):
     d = pos_data(year, sens)
     xm, ym = d["x"].mean(), d["y"].mean()
     chips = []
-    if year != FIRST:
+    if not d.empty:
         for bank, r in d.sort_values("rank").iterrows():
             chips.append(html.Span(f"{bank}: {quadrant_of(r['x'], r['y'], xm, ym)}", className="chip flat"))
     return fig_positioning(year, sens, bool(theme_v)), chips
