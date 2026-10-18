@@ -1,17 +1,3 @@
-"""Clean, score, rank and quality-check DigitalBank raw evidence.
-
-Input:  raw_data.csv (600 rows: 5 banks x 5 years x 24 indicators)
-Outputs:
-  cleaned_data.csv   normalized raw values and missing-data flags
-  scored_data.csv    indicator-level scores on a 0-5 scale
-  final_scores.csv   pillar scores, Digital Score and yearly rank
-  data_quality.csv   coverage and missingness by bank-year
-  sensitivity_check.csv  full ranking vs ranking without CUS2/CUS3
-
-This is a transparent, public-data-based index. A missing public citation is
-scored as 0 for qualitative indicators, but the output keeps the missing flag;
-that score does not mean the bank definitely lacks the capability.
-"""
 from __future__ import annotations
 
 import re
@@ -37,28 +23,27 @@ PILLAR_ORDER = [
 ]
 QUANT_INDICATORS = {"CUS2", "CUS3"}
 
-# Conservative qualitative anchors. The rule is deliberately explicit and
-# reproducible; project members can revise this table after evidence review.
-QUALITATIVE_ANCHORS = {
-    "plan": 1,
-    "planned": 1,
-    "pilot": 2,
-    "thử nghiệm": 2,
-    "thuc nghiem": 2,
-    "trial": 2,
-    "đã triển khai": 3,
-    "da trien khai": 3,
-    "triển khai": 3,
-    "trien khai": 3,
-    "vận hành": 3,
-    "van hanh": 3,
-    "nhiều": 4,
-    "nhieu": 4,
-    "toàn diện": 5,
-    "toan dien": 5,
-    "quy mô lớn": 5,
-    "quy mo lon": 5,
-}
+# Framework: an indicator missing for >= 3 banks in the same year is not used
+# that year, so at least (n_banks - 2) banks must report a value.
+MAX_MISSING_BANKS_PER_YEAR = 2
+
+# Evidence present but no tier keyword found: rubric level 3 = "implemented,
+# clear evidence" (level 2 is reserved for pilot / very limited scope).
+DEFAULT_EVIDENCE_SCORE = 3.0
+
+# Rubric tiers, checked from level 5 down to level 1 (first match wins).
+QUALITATIVE_TIERS: list[tuple[float, list[str]]] = [
+    (5.0, ["toàn diện", "toan dien", "quy mô lớn", "quy mo lon", "dẫn đầu", "100%", "cloud-first"]),
+    (4.0, ["nhiều", "nhieu", "mở rộng", "mo rong", "rộng rãi", "phần lớn", "tích hợp sâu", "tiên tiến"]),
+    (3.0, ["hoàn thành", "đã triển khai", "da trien khai", "vận hành", "van hanh", "áp dụng"]),
+    (2.0, ["pilot", "thử nghiệm", "thuc nghiem", "trial", "phạm vi nhỏ", "đang ứng dụng"]),
+    (1.0, ["kế hoạch", "ke hoach", "định hướng", "lộ trình", "dự kiến", "plan", "planned", "planning"]),
+]
+
+
+def _keyword_found(keyword: str, text: str) -> bool:
+    """Whole-word/phrase match, so 'plan' does not fire on 'explanation'."""
+    return re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", text) is not None
 
 
 def is_missing(value: Any) -> bool:
@@ -94,20 +79,16 @@ def parse_number(value: Any) -> float:
 
 
 def qualitative_score(row: pd.Series) -> tuple[float, str]:
+    """Score one qualitative row from its Evidence text only (0-5)."""
     evidence = normalize_text(row.get("Evidence", ""))
-    raw_value = normalize_text(row.get("Raw_Value", ""))
     if not evidence or "not_found_public_evidence" in evidence:
         return 0.0, "No public evidence found; score 0 per rubric"
 
-    combined = f"{raw_value} {evidence}"
-    score = 3
-    basis = "Evidence found; conservative implemented score 3"
-    for anchor, anchor_score in sorted(QUALITATIVE_ANCHORS.items(), key=lambda item: len(item[0]), reverse=True):
-        if anchor in combined:
-            score = max(score, anchor_score)
-            basis = f"Keyword anchor: {anchor}"
-            break
-    return float(min(score, 5)), basis
+    for tier_score, keywords in QUALITATIVE_TIERS:
+        for keyword in keywords:
+            if _keyword_found(keyword, evidence):
+                return tier_score, f"Keyword tier {tier_score:g}: {keyword}"
+    return DEFAULT_EVIDENCE_SCORE, f"Evidence found, no tier keyword; default {DEFAULT_EVIDENCE_SCORE:g}"
 
 
 def min_max_score(series: pd.Series) -> pd.Series:
@@ -117,7 +98,7 @@ def min_max_score(series: pd.Series) -> pd.Series:
     minimum = numeric.min()
     maximum = numeric.max()
     if minimum == maximum:
-        return pd.Series(2.5, index=series.index, dtype=float)
+        return pd.Series(2.5, index=series.index, dtype=float).where(numeric.notna())
     return 5 * (numeric - minimum) / (maximum - minimum)
 
 
@@ -139,15 +120,35 @@ def build_scored_data(raw: pd.DataFrame) -> pd.DataFrame:
         indicator = str(row["Indicator_ID"]).strip()
         if indicator in QUANT_INDICATORS:
             cleaned.at[idx, "Numeric_Value"] = parse_number(row["Raw_Value"])
-            cleaned.at[idx, "Scoring_Basis"] = "Min-Max across all 25 bank-year observations"
         else:
             score, basis = qualitative_score(row)
             cleaned.at[idx, "Score_0_5"] = score
             cleaned.at[idx, "Scoring_Basis"] = basis
 
-    for indicator in QUANT_INDICATORS:
-        mask = cleaned["Indicator_ID"].eq(indicator)
-        cleaned.loc[mask, "Score_0_5"] = min_max_score(cleaned.loc[mask, "Numeric_Value"])
+    n_banks = int(cleaned["Bank"].nunique())
+    min_available = max(1, n_banks - MAX_MISSING_BANKS_PER_YEAR)
+    for indicator in sorted(QUANT_INDICATORS):
+        mask = cleaned["Indicator_ID"].astype(str).str.strip().eq(indicator)
+        sub = cleaned[mask]
+        n_by_year = sub.groupby("Year")["Numeric_Value"].apply(lambda s: int(s.notna().sum()))
+        usable_years = set(n_by_year[n_by_year >= min_available].index)
+        usable = mask & cleaned["Year"].isin(usable_years)
+        # default: not scoreable, with the reason written per row
+        cleaned.loc[mask, "Score_0_5"] = np.nan
+        for year, n in n_by_year.items():
+            ymask = mask & cleaned["Year"].eq(year)
+            if year in usable_years:
+                cleaned.loc[ymask, "Scoring_Basis"] = "N/A: no numeric value for this bank"
+            else:
+                cleaned.loc[ymask, "Scoring_Basis"] = (
+                    f"N/A: only {n}/{n_banks} banks report this in {year} "
+                    f"(need >= {min_available}); indicator not used this year"
+                )
+        if usable.any():
+            scores = min_max_score(cleaned.loc[usable, "Numeric_Value"])
+            cleaned.loc[usable, "Score_0_5"] = scores
+            has_val = usable & cleaned["Numeric_Value"].notna()
+            cleaned.loc[has_val, "Scoring_Basis"] = "Min-Max across observations with a value"
 
     cleaned["Score_0_5"] = pd.to_numeric(cleaned["Score_0_5"], errors="coerce").round(4)
     return cleaned
