@@ -159,12 +159,13 @@ create_trend_line_chart(final_scores).write_image("trend.png", scale=2)
 
 | Điểm | Ý nghĩa |
 |---|---|
-| 0 | Không tìm thấy bằng chứng công khai trong phạm vi nguồn khảo sát (phản ánh mức độ công bố) |
-| 1 | Mới đề cập định hướng hoặc kế hoạch |
-| 2 | Thử nghiệm/pilot hoặc phạm vi rất hạn chế |
-| 3 | Đã triển khai thực tế, có bằng chứng rõ |
-| 4 | Triển khai rộng ở nhiều nghiệp vụ/kênh hoặc có kết quả đáng kể |
-| 5 | Quy mô cao, tích hợp sâu, có số liệu/kết quả rõ ràng |
+| 0 | Có bằng chứng xác định hoạt động chưa được triển khai |
+| 1 | Hoạt động ở giai đoạn định hướng hoặc chuẩn bị |
+| 2 | Hoạt động bước đầu được triển khai ở phạm vi hạn chế |
+| 3 | Hoạt động đã được triển khai và có bằng chứng cụ thể |
+| 4 | Hoạt động được triển khai rộng rãi, có tính tích hợp hoặc kết quả rõ ràng |
+| 5 | Hoạt động được triển khai sâu rộng, có kết quả nổi bật và bằng chứng cụ thể |
+| N/A | Không có đủ bằng chứng đáng tin cậy để xác định điểm |
 
 **Tiêu chí định lượng (CUS2, CUS3):** chuẩn hóa Min–Max trên toàn bộ 25 quan sát, chỉ áp dụng khi dữ liệu cùng định nghĩa và đơn vị:
 
